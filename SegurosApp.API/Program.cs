@@ -5,6 +5,7 @@ using Microsoft.OpenApi.Models;
 using SegurosApp.API.Data;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Services;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +34,38 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+
+        // ✅ AGREGAR ESTOS EVENTOS PARA DEBUG
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                var userName = context.Principal?.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
+                var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "Unknown";
+                Console.WriteLine($"✅ JWT Token Validated - User: {userName} (ID: {userId})");
+                Console.WriteLine($"✅ Request Path: {context.Request.Path}");
+                return Task.CompletedTask;
+            },
+            OnChallenge = context =>
+            {
+                Console.WriteLine($"⚠️ JWT Challenge triggered");
+                Console.WriteLine($"⚠️ Error: {context.Error}");
+                Console.WriteLine($"⚠️ Error Description: {context.ErrorDescription}");
+                Console.WriteLine($"⚠️ Request Path: {context.Request.Path}");
+                Console.WriteLine($"⚠️ Auth Header: {context.Request.Headers.Authorization.FirstOrDefault()}");
+                return Task.CompletedTask;
+            },
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Headers.Authorization.FirstOrDefault();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    Console.WriteLine($"📨 JWT Message Received for: {context.Request.Path}");
+                    Console.WriteLine($"📨 Token starts with: {token.Substring(0, Math.Min(20, token.Length))}...");
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 

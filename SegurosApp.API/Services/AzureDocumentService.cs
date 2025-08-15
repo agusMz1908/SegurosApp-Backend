@@ -29,21 +29,50 @@ namespace SegurosApp.API.Services
             _logger = logger;
             _fieldParser = fieldParser;
 
-            // Configurar cliente de Azure
+            // DEBUG: Verificar configuración
             var endpoint = _configuration["AzureDocumentIntelligence:Endpoint"];
             var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
+            var modelId = _configuration["AzureDocumentIntelligence:ModelId"];
 
-            if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(apiKey))
+            _logger.LogInformation("🔧 DEBUG - Azure Configuration:");
+            _logger.LogInformation("🔧 Endpoint: '{Endpoint}'", endpoint);
+            _logger.LogInformation("🔧 ApiKey length: {Length}", apiKey?.Length ?? 0);
+            _logger.LogInformation("🔧 ModelId: '{ModelId}'", modelId);
+
+            // Verificar que no sean placeholders
+            if (string.IsNullOrEmpty(endpoint) || endpoint.Contains("PLACEHOLDER"))
             {
-                throw new InvalidOperationException("Azure Document Intelligence no está configurado correctamente");
+                _logger.LogError("❌ Azure Endpoint es placeholder o vacío. Usando modo mock.");
+                _documentClient = null; // Indicar que no hay cliente válido
+                return;
             }
 
-            _documentClient = new DocumentIntelligenceClient(
-                new Uri(endpoint),
-                new AzureKeyCredential(apiKey)
-            );
+            if (string.IsNullOrEmpty(apiKey) || apiKey.Contains("PLACEHOLDER"))
+            {
+                _logger.LogError("❌ Azure ApiKey es placeholder o vacío. Usando modo mock.");
+                _documentClient = null;
+                return;
+            }
 
-            _logger.LogInformation("🤖 Azure Document Intelligence Service inicializado");
+            try
+            {
+                _documentClient = new DocumentIntelligenceClient(
+                    new Uri(endpoint),
+                    new AzureKeyCredential(apiKey)
+                );
+
+                _logger.LogInformation("✅ Azure Document Intelligence Service inicializado correctamente");
+            }
+            catch (UriFormatException ex)
+            {
+                _logger.LogError(ex, "❌ Error con formato de URI de Azure: {Endpoint}", endpoint);
+                _documentClient = null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inicializando Azure Document Intelligence");
+                _documentClient = null;
+            }
         }
 
         public async Task<DocumentScanResponse> ProcessDocumentAsync(IFormFile file, int userId)
@@ -339,91 +368,217 @@ namespace SegurosApp.API.Services
 
         private async Task<AzureDocumentResult> ProcessWithAzureAsync(IFormFile file)
         {
-            var modelId = _configuration["AzureDocumentIntelligence:ModelId"];
-            if (string.IsNullOrEmpty(modelId))
+            var modelId = _configuration["AzureDocumentIntelligence:ModelId"] ?? "poliza_vehiculos_bse";
+
+            _logger.LogInformation("🤖 Procesando con Azure modelo: {ModelId}", modelId);
+
+            if (_documentClient == null)
             {
-                modelId = "prebuilt-document";
+                throw new InvalidOperationException("Azure Document Intelligence no está configurado correctamente");
             }
 
-            _logger.LogInformation("🤖 Enviando a Azure Document Intelligence con modelo: {ModelId}", modelId);
+            using var stream = file.OpenReadStream();
+            var binaryData = BinaryData.FromStream(stream);
+
+            _logger.LogInformation("📤 Enviando {FileSize} bytes a Azure con modelo {ModelId}...", file.Length, modelId);
 
             try
             {
-                using var stream = file.OpenReadStream();
-                var content = BinaryData.FromStream(stream);
-
+                // ✅ Método básico sin opciones
                 var operation = await _documentClient.AnalyzeDocumentAsync(
                     WaitUntil.Completed,
                     modelId,
-                    content);
+                    binaryData);
 
                 var analyzeResult = operation.Value;
 
-                // Extraer campos del resultado
-                var extractedFields = new Dictionary<string, object>();
-                int fieldsExtracted = 0;
-                int totalFieldsAttempted = 0;
+                var confidence = (analyzeResult.Documents?.FirstOrDefault()?.Confidence ?? 0.5f);
+                _logger.LogInformation("✅ Azure procesó el documento. Confidence: {Confidence:P1}", confidence);
 
-                if (analyzeResult.Documents != null && analyzeResult.Documents.Count > 0)
+                var extractedFields = ExtractRealFieldsFromAzureResult(analyzeResult);
+
+                return new AzureDocumentResult
                 {
-                    var document = analyzeResult.Documents[0];
+                    AzureOperationId = operation.Id ?? "azure-" + Guid.NewGuid().ToString("N")[..8],
+                    SuccessRate = (decimal)(confidence * 100),
+                    FieldsExtracted = extractedFields.Count,
+                    TotalFieldsAttempted = Math.Max(8, extractedFields.Count),
+                    ExtractedFields = extractedFields
+                };
+            }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogError("❌ Azure RequestFailedException: Status={Status}, ErrorCode={ErrorCode}, Message={Message}",
+                    ex.Status, ex.ErrorCode, ex.Message);
 
-                    if (document.Fields != null)
+                // Log más detalles para debug
+                _logger.LogError("❌ Full exception: {Exception}", ex.ToString());
+
+                throw new InvalidOperationException($"Azure Document Intelligence error: {ex.Message}", ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado procesando con Azure");
+                throw;
+            }
+        }
+
+        private Dictionary<string, object> ExtractRealFieldsFromAzureResult(AnalyzeResult analyzeResult)
+        {
+            var extractedFields = new Dictionary<string, object>();
+
+            try
+            {
+                if (analyzeResult?.Documents == null)
+                {
+                    _logger.LogWarning("⚠️ AnalyzeResult o Documents es null");
+                    return extractedFields;
+                }
+
+                foreach (var document in analyzeResult.Documents)
+                {
+                    _logger.LogInformation("📋 Documento procesado con confianza: {Confidence:P1}",
+                        document.Confidence);
+
+                    if (document.Fields == null)
                     {
-                        totalFieldsAttempted = document.Fields.Count;
+                        _logger.LogWarning("⚠️ Document.Fields es null");
+                        continue;
+                    }
 
-                        foreach (var field in document.Fields)
+                    foreach (var field in document.Fields)
+                    {
+                        try
                         {
-                            try
+                            var value = ExtractFieldValue(field.Value);
+                            if (!string.IsNullOrEmpty(value))
                             {
-                                var value = ExtractFieldValue(field.Value);
-                                if (!string.IsNullOrEmpty(value))
-                                {
-                                    extractedFields[field.Key] = value;
-                                    fieldsExtracted++;
-                                }
+                                extractedFields[field.Key] = value;
+                                _logger.LogInformation("📄 Campo: {Key} = {Value} (Confidence: {Confidence:P1})",
+                                    field.Key, value, field.Value.Confidence ?? 0);
                             }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning("⚠️ Error extrayendo campo {FieldName}: {Error}", field.Key, ex.Message);
-                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("⚠️ Error extrayendo campo {FieldName}: {Error}", field.Key, ex.Message);
                         }
                     }
                 }
 
-                // Si no hay campos específicos del modelo, extraer de key-value pairs y tables
-                if (extractedFields.Count == 0)
+                // También extraer de key-value pairs si están disponibles
+                if (analyzeResult.KeyValuePairs != null)
                 {
-                    ExtractFromKeyValuePairs(analyzeResult, extractedFields, ref fieldsExtracted, ref totalFieldsAttempted);
-                    ExtractFromTables(analyzeResult, extractedFields, ref fieldsExtracted, ref totalFieldsAttempted);
+                    _logger.LogInformation("📝 Extrayendo {Count} pares clave-valor", analyzeResult.KeyValuePairs.Count);
+
+                    foreach (var kvp in analyzeResult.KeyValuePairs)
+                    {
+                        try
+                        {
+                            var key = kvp.Key?.Content?.ToLowerInvariant()
+                                .Replace(" ", "_")
+                                .Replace(":", "")
+                                .Replace(".", "")
+                                .Replace("-", "_") ?? "";
+
+                            var value = kvp.Value?.Content?.Trim() ?? "";
+
+                            if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value) && value.Length > 1)
+                            {
+                                if (!extractedFields.ContainsKey(key))
+                                {
+                                    extractedFields[key] = value;
+                                    _logger.LogInformation("📄 KVP: {Key} = {Value}", key, value);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("⚠️ Error extrayendo KVP: {Error}", ex.Message);
+                        }
+                    }
                 }
 
-                // Mapear campos específicos del modelo personalizado a nombres estándar
-                var mappedFields = MapFieldsToStandardNames(extractedFields);
-
-                // Procesar con parser avanzado
-                var processedFields = _fieldParser.ProcessExtractedData(mappedFields);
-
-                // Calcular tasa de éxito
-                var successRate = totalFieldsAttempted > 0 ? (decimal)fieldsExtracted / totalFieldsAttempted * 100 : 0;
-
-                _logger.LogInformation("✅ Azure procesó el documento: {FieldsExtracted}/{TotalFields} campos, {SuccessRate}% éxito",
-                    fieldsExtracted, totalFieldsAttempted, successRate);
-
-                return new AzureDocumentResult
+                // Si hay tablas, extraerlas también
+                if (analyzeResult.Tables?.Count > 0)
                 {
-                    AzureOperationId = Guid.NewGuid().ToString(),
-                    SuccessRate = successRate,
-                    FieldsExtracted = fieldsExtracted,
-                    TotalFieldsAttempted = totalFieldsAttempted,
-                    ExtractedFields = processedFields
-                };
+                    _logger.LogInformation("📊 Encontradas {TableCount} tablas", analyzeResult.Tables.Count);
+                    var tableData = ExtractTableData(analyzeResult.Tables);
+                    foreach (var kvp in tableData)
+                    {
+                        if (!extractedFields.ContainsKey(kvp.Key))
+                        {
+                            extractedFields[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+
+                _logger.LogInformation("📋 Total campos extraídos: {Count}", extractedFields.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en Azure Document Intelligence: {Message}", ex.Message);
-                throw;
+                _logger.LogError(ex, "❌ Error extrayendo campos de Azure result");
             }
+
+            return extractedFields;
+        }
+
+        private Dictionary<string, object> ParseContentForPolizaFields(string content)
+        {
+            var fields = new Dictionary<string, object>();
+
+            if (string.IsNullOrEmpty(content))
+                return fields;
+
+            try
+            {
+                // Crear un diccionario con el contenido para que el parser lo procese
+                var rawFields = new Dictionary<string, object>
+                {
+                    ["content"] = content
+                };
+
+                // Usar el parser existente
+                fields = _fieldParser.ProcessExtractedData(rawFields);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error parseando contenido");
+            }
+
+            return fields;
+        }
+
+        private Dictionary<string, object> ExtractTableData(IReadOnlyList<DocumentTable> tables)
+        {
+            var tableFields = new Dictionary<string, object>();
+
+            try
+            {
+                foreach (var table in tables.Take(3)) // Limitar a 3 tablas para evitar spam
+                {
+                    _logger.LogInformation("📊 Procesando tabla con {Rows} filas y {Cols} columnas",
+                        table.RowCount, table.ColumnCount);
+
+                    for (int row = 0; row < table.RowCount && row < 10; row++) // Max 10 filas
+                    {
+                        for (int col = 0; col < table.ColumnCount && col < 5; col++) // Max 5 columnas
+                        {
+                            var cell = table.Cells.FirstOrDefault(c => c.RowIndex == row && c.ColumnIndex == col);
+                            if (cell != null && !string.IsNullOrEmpty(cell.Content?.Trim()))
+                            {
+                                var key = $"tabla_{row}_{col}";
+                                tableFields[key] = cell.Content.Trim();
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error extrayendo datos de tablas");
+            }
+
+            return tableFields;
         }
 
         // ✅ CORREGIDO: Método simplificado para evitar errores de tipos
@@ -434,40 +589,32 @@ namespace SegurosApp.API.Services
                 if (field == null)
                     return string.Empty;
 
-                // ✅ Verificar campos de texto
-                if (!string.IsNullOrEmpty(field.ValueString))
-                    return field.ValueString;
+                // Usar Content como principal
+                if (!string.IsNullOrEmpty(field.Content))
+                    return field.Content.Trim();
 
-                // ✅ Verificar números decimales
+                // Fallback a ValueString si Content está vacío
+                if (!string.IsNullOrEmpty(field.ValueString))
+                    return field.ValueString.Trim();
+
+                // Otras propiedades de valor
                 if (field.ValueDouble.HasValue)
                     return field.ValueDouble.Value.ToString();
 
-                // ✅ Verificar números enteros
                 if (field.ValueInt64.HasValue)
                     return field.ValueInt64.Value.ToString();
 
-                // ✅ Verificar fechas
                 if (field.ValueDate.HasValue)
                     return field.ValueDate.Value.ToString("yyyy-MM-dd");
 
-                // ✅ Verificar booleanos
                 if (field.ValueBoolean.HasValue)
                     return field.ValueBoolean.Value.ToString();
 
-                // ✅ Verificar país/región
-                if (!string.IsNullOrEmpty(field.ValueCountryRegion))
-                    return field.ValueCountryRegion;
-
-                // ✅ Verificar número de teléfono
-                if (!string.IsNullOrEmpty(field.ValuePhoneNumber))
-                    return field.ValuePhoneNumber;
-
-                // ✅ Contenido por defecto
-                return field.Content ?? string.Empty;
+                return string.Empty;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("Error extrayendo valor del campo: {Error}", ex.Message);
+                _logger.LogWarning("⚠️ Error extrayendo valor del campo: {Error}", ex.Message);
                 return field?.Content ?? string.Empty;
             }
         }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using SegurosApp.API.DTOs;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Models;
+using System.Security.Claims;
 
 namespace SegurosApp.API.Controllers
 {
@@ -91,7 +92,7 @@ namespace SegurosApp.API.Controllers
         {
             try
             {
-                var userIdClaim = User.FindFirst("id")?.Value;
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value; 
                 if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
                 {
                     return Unauthorized(ApiResponse<UserDto>.ErrorResult("Token inválido"));

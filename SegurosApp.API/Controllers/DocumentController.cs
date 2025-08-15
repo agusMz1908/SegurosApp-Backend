@@ -289,6 +289,7 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+
         [HttpGet("health")]
         [ProducesResponseType(typeof(object), 200)]
         public ActionResult GetHealthStatus()
@@ -324,7 +325,7 @@ namespace SegurosApp.API.Controllers
 
         private int? GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirst("userId")?.Value;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value; 
             if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
             {
                 return null;
@@ -332,4 +333,5 @@ namespace SegurosApp.API.Controllers
             return userId;
         }
     }
+
 }

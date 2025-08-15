@@ -247,12 +247,12 @@ namespace SegurosApp.API.Services
             {
                 Subject = new ClaimsIdentity(new[]
                 {
-                    new Claim("id", user.Id.ToString()),
-                    new Claim("username", user.Username),
-                    new Claim("email", user.Email),
-                    new Claim("role", "User"),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                }),
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), 
+            new Claim(ClaimTypes.Name, user.Username),               
+            new Claim(ClaimTypes.Email, user.Email),                
+            new Claim(ClaimTypes.Role, "User"),                       
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        }),
                 Expires = DateTime.UtcNow.AddHours(GetTokenExpiryHours()),
                 Issuer = _configuration["Jwt:Issuer"],
                 Audience = _configuration["Jwt:Audience"],
