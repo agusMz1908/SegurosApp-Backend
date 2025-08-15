@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SegurosApp.API.DTOs;
-using SegurosApp.API.Services;
-using System.Security.Claims;
+using SegurosApp.API.Interfaces;
+using SegurosApp.API.Models;
 
 namespace SegurosApp.API.Controllers
 {
@@ -21,29 +21,27 @@ namespace SegurosApp.API.Controllers
 
         [HttpPost("login")]
         [ProducesResponseType(typeof(LoginResponse), 200)]
-        [ProducesResponseType(400)]
-        [ProducesResponseType(401)]
+        [ProducesResponseType(typeof(LoginResponse), 400)]
         public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
         {
             try
             {
                 if (!ModelState.IsValid)
                 {
-                    return BadRequest(ModelState);
+                    return BadRequest(new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Datos de entrada inválidos"
+                    });
                 }
-
-                _logger.LogInformation("🔐 Intento de login desde IP: {IP} para usuario: {Username}",
-                    HttpContext.Connection.RemoteIpAddress, request.Username);
 
                 var result = await _authService.LoginAsync(request.Username, request.Password);
 
                 if (!result.Success)
                 {
-                    _logger.LogWarning("⚠️ Login fallido para usuario: {Username}", request.Username);
-                    return Unauthorized(result);
+                    return BadRequest(result);
                 }
 
-                _logger.LogInformation("✅ Login exitoso para usuario: {Username}", request.Username);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -52,36 +50,30 @@ namespace SegurosApp.API.Controllers
                 return StatusCode(500, new LoginResponse
                 {
                     Success = false,
-                    ErrorMessage = "Error interno del servidor"
+                    Message = "Error interno del servidor"
                 });
             }
         }
 
         [HttpPost("register")]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), 200)]
-        [ProducesResponseType(400)]
+        [ProducesResponseType(typeof(ApiResponse<UserDto>), 400)]
         public async Task<ActionResult<ApiResponse<UserDto>>> Register([FromBody] RegisterRequest request)
         {
             try
             {
                 if (!ModelState.IsValid)
                 {
-                    return BadRequest(ModelState);
+                    return BadRequest(ApiResponse<UserDto>.ErrorResult("Datos de entrada inválidos"));
                 }
-
-                _logger.LogInformation("📝 Intento de registro desde IP: {IP} para usuario: {Username}",
-                    HttpContext.Connection.RemoteIpAddress, request.Username);
 
                 var result = await _authService.RegisterAsync(request);
 
                 if (!result.Success)
                 {
-                    _logger.LogWarning("⚠️ Registro fallido para usuario: {Username} - {Error}",
-                        request.Username, result.ErrorMessage);
                     return BadRequest(result);
                 }
 
-                _logger.LogInformation("✅ Usuario registrado exitosamente: {Username}", request.Username);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -93,55 +85,99 @@ namespace SegurosApp.API.Controllers
 
         [HttpGet("me")]
         [Authorize]
-        [ProducesResponseType(typeof(UserDto), 200)]
+        [ProducesResponseType(typeof(ApiResponse<UserDto>), 200)]
         [ProducesResponseType(401)]
-        [ProducesResponseType(404)]
-        public async Task<ActionResult<UserDto>> GetCurrentUser()
+        public async Task<ActionResult<ApiResponse<UserDto>>> GetCurrentUser()
         {
             try
             {
-                var userIdClaim = User.FindFirst("userId")?.Value;
-                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+                var userIdClaim = User.FindFirst("id")?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
                 {
-                    return Unauthorized(new { message = "Token inválido" });
+                    return Unauthorized(ApiResponse<UserDto>.ErrorResult("Token inválido"));
                 }
 
                 var user = await _authService.GetUserByIdAsync(userId);
                 if (user == null)
                 {
-                    return NotFound(new { message = "Usuario no encontrado" });
+                    return NotFound(ApiResponse<UserDto>.ErrorResult("Usuario no encontrado"));
                 }
 
-                return Ok(user);
+                return Ok(ApiResponse<UserDto>.SuccessResult(user, "Usuario obtenido exitosamente"));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ Error obteniendo usuario actual");
-                return StatusCode(500, new { message = "Error interno del servidor" });
+                return StatusCode(500, ApiResponse<UserDto>.ErrorResult("Error interno del servidor"));
             }
         }
 
-        [HttpPost("logout")]
+        [HttpPost("change-password")]
         [Authorize]
-        [ProducesResponseType(200)]
-        public ActionResult Logout()
+        [ProducesResponseType(typeof(ApiResponse), 200)]
+        [ProducesResponseType(typeof(ApiResponse), 400)]
+        [ProducesResponseType(401)]
+        public async Task<ActionResult<ApiResponse>> ChangePassword([FromBody] ChangePasswordRequest request)
         {
             try
             {
-                var username = User.FindFirst("username")?.Value ?? "Unknown";
-                _logger.LogInformation("🚪 Logout para usuario: {Username}", username);
-
-                return Ok(new
+                if (!ModelState.IsValid)
                 {
-                    success = true,
-                    message = "Sesión cerrada exitosamente"
+                    return BadRequest(ApiResponse.ErrorResult("Datos de entrada inválidos"));
+                }
+
+                var userIdClaim = User.FindFirst("id")?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                {
+                    return Unauthorized(ApiResponse.ErrorResult("Token inválido"));
+                }
+
+                var result = await _authService.ChangePasswordAsync(userId, request.CurrentPassword, request.NewPassword);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error cambiando contraseña");
+                return StatusCode(500, ApiResponse.ErrorResult("Error interno del servidor"));
+            }
+        }
+
+        [HttpPost("validate-token")]
+        [ProducesResponseType(typeof(ApiResponse), 200)]
+        public async Task<ActionResult<ApiResponse>> ValidateToken([FromBody] ValidateTokenRequest request)
+        {
+            try
+            {
+                var isValid = await _authService.ValidateTokenAsync(request.Token);
+
+                return Ok(new ApiResponse
+                {
+                    Success = isValid,
+                    Message = isValid ? "Token válido" : "Token inválido"
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en logout");
-                return StatusCode(500, new { message = "Error interno del servidor" });
+                _logger.LogError(ex, "❌ Error validando token");
+                return StatusCode(500, ApiResponse.ErrorResult("Error interno del servidor"));
             }
         }
+    }
+
+    public class ChangePasswordRequest
+    {
+        public string CurrentPassword { get; set; } = string.Empty;
+        public string NewPassword { get; set; } = string.Empty;
+    }
+
+    public class ValidateTokenRequest
+    {
+        public string Token { get; set; } = string.Empty;
     }
 }

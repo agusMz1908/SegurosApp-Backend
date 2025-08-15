@@ -6,6 +6,8 @@
         public int SuccessfulScans { get; set; }
         public int FailedScans { get; set; }
         public int BillableScans { get; set; }
+        public decimal SuccessRate { get; set; }  
+        public int TotalProcessingTimeMs { get; set; } 
         public decimal AverageSuccessRate { get; set; }
         public int AverageProcessingTimeMs { get; set; }
 

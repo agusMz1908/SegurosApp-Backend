@@ -1,55 +1,51 @@
 ﻿namespace SegurosApp.API.DTOs
 {
-    public class ApiResponse<T>
+    public class ApiResponse
     {
         public bool Success { get; set; }
-        public T? Data { get; set; }
-        public string? Message { get; set; }
-        public string? ErrorMessage { get; set; }
+        public string Message { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
-        // Para respuestas exitosas con datos
-        public static ApiResponse<T> SuccessResult(T data, string? message = null)
+        public static ApiResponse SuccessResult(string message = "Operación exitosa")
         {
-            return new ApiResponse<T>
+            return new ApiResponse
             {
                 Success = true,
-                Data = data,
                 Message = message
             };
         }
 
-        // Para respuestas de error
-        public static ApiResponse<T> ErrorResult(string errorMessage)
+        public static ApiResponse ErrorResult(string message = "Error en la operación")
         {
-            return new ApiResponse<T>
+            return new ApiResponse
             {
                 Success = false,
-                ErrorMessage = errorMessage
+                Message = message
             };
         }
     }
 
-    // Para respuestas simples sin datos, usa object como tipo
-    public class ApiResponse : ApiResponse<object>
+    public class ApiResponse<T> : ApiResponse
     {
-        // Para respuestas exitosas sin datos
-        public static ApiResponse SuccessResponse(string? message = null)
+        public T? Data { get; set; }
+
+        public static ApiResponse<T> SuccessResult(T data, string message = "Operación exitosa")
         {
-            return new ApiResponse
+            return new ApiResponse<T>
             {
                 Success = true,
-                Message = message
+                Message = message,
+                Data = data
             };
         }
 
-        // Para respuestas de error sin datos
-        public static ApiResponse Error(string errorMessage)
+        public static new ApiResponse<T> ErrorResult(string message = "Error en la operación")
         {
-            return new ApiResponse
+            return new ApiResponse<T>
             {
                 Success = false,
-                ErrorMessage = errorMessage
+                Message = message,
+                Data = default(T)
             };
         }
     }

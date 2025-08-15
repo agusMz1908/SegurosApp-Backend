@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using SegurosApp.API.Models;
+using System.ComponentModel.DataAnnotations;
 
 namespace SegurosApp.API.DTOs
 {
@@ -14,30 +15,31 @@ namespace SegurosApp.API.DTOs
     public class LoginResponse
     {
         public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
         public string? Token { get; set; }
+        public DateTime? ExpiresAt { get; set; }
         public UserDto? User { get; set; }
-        public string? ErrorMessage { get; set; }
     }
 
     public class RegisterRequest
     {
-        [Required, MinLength(3), MaxLength(50)]
+        [Required]
+        [StringLength(50)]
         public string Username { get; set; } = string.Empty;
 
-        [Required, MinLength(6)]
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        [MinLength(6)]
         public string Password { get; set; } = string.Empty;
 
-        public string? Email { get; set; }
+        [StringLength(50)]
+        public string? FirstName { get; set; }
 
-        public string? CompanyName { get; set; }
-
-        public string? CompanyAddress { get; set; }
-
-        public string? CompanyRUC { get; set; }
-
-        public string? ContactPerson { get; set; }
-
-        public string? ContactPhone { get; set; }
+        [StringLength(50)]
+        public string? LastName { get; set; }
     }
 
     public class ChangePasswordRequest

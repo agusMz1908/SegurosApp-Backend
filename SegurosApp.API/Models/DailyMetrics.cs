@@ -1,22 +1,24 @@
-﻿namespace SegurosApp.API.Models
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace SegurosApp.API.Models
 {
+    [Table("DailyMetrics")]
     public class DailyMetrics
     {
+        [Key]
         public int Id { get; set; }
+        [Required]
         public int UserId { get; set; }
+        [Required]
         public DateTime Date { get; set; }
-
-        public int TotalScans { get; set; } = 0;
-        public int SuccessfulScans { get; set; } = 0;
-        public int BillableScans { get; set; } = 0;
-        public int FailedScans { get; set; } = 0;
-        public int PolizasCreated { get; set; } = 0;
-
-        public int AvgProcessingTimeMs { get; set; } = 0;
-        public decimal AvgSuccessRate { get; set; } = 0;
-        public decimal EstimatedRevenue { get; set; } = 0;
-
-        // Navigation properties
-        public User User { get; set; } = null!;
+        public int TotalScans { get; set; }
+        public int SuccessfulScans { get; set; }
+        public int FailedScans { get; set; }
+        public int BillableScans { get; set; }
+        public decimal AverageProcessingTimeMs { get; set; }
+        public decimal AverageSuccessRate { get; set; }
+        [ForeignKey("UserId")]
+        public virtual User User { get; set; } = null!;
     }
 }

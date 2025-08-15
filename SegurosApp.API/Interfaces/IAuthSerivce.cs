@@ -1,4 +1,5 @@
 ﻿using SegurosApp.API.DTOs;
+using SegurosApp.API.Models;
 
 public interface IAuthService
 {

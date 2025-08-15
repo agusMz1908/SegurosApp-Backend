@@ -1,21 +1,27 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SegurosApp.API.Models
 {
+    [Table("DocumentScans")]
     public class DocumentScan
     {
+        [Key]
         public int Id { get; set; }
+
+        [Required]
         public int UserId { get; set; }
 
-        [Required, MaxLength(500)]
+        [Required]
+        [MaxLength(255)]
         public string FileName { get; set; } = string.Empty;
 
         public long FileSize { get; set; }
 
-        [Required, MaxLength(50)]
+        [MaxLength(32)]
         public string FileMd5Hash { get; set; } = string.Empty;
 
-        [MaxLength(100)]
+        [MaxLength(255)]
         public string? AzureOperationId { get; set; }
 
         public int ProcessingTimeMs { get; set; }
@@ -24,29 +30,31 @@ namespace SegurosApp.API.Models
         public int TotalFieldsAttempted { get; set; }
 
         [Required]
-        public string ExtractedData { get; set; } = string.Empty; // JSON
+        [MaxLength(50)]
+        public string Status { get; set; } = string.Empty;
 
-        [Required, MaxLength(50)]
-        public string Status { get; set; } = string.Empty; // Processing, Completed, Error
+        [Required]
+        public string ExtractedData { get; set; } = "{}";
 
-        public string? ErrorMessage { get; set; }
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? CompletedAt { get; set; }
+        public bool IsDuplicate { get; set; }
+        public int? ExistingScanId { get; set; }
 
+        // Info de Velneo
         [MaxLength(100)]
         public string? VelneoPolizaNumber { get; set; }
+        public bool VelneoCreated { get; set; }
 
-        public bool VelneoCreated { get; set; } = false;
-        public string? VelneoResponse { get; set; }
-
-        // Billing properties
+        // Facturación
         public bool IsBillable { get; set; } = true;
-        public bool IsBilled { get; set; } = false;
+        public bool IsBilled { get; set; }
         public DateTime? BilledAt { get; set; }
-        public int? BillingItemId { get; set; }
+
+        // Timestamps
+        public DateTime CreatedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
 
         // Navigation properties
-        public User User { get; set; } = null!;
-        public BillingItem? BillingItem { get; set; }
+        [ForeignKey("UserId")]
+        public virtual User User { get; set; } = null!;
     }
 }

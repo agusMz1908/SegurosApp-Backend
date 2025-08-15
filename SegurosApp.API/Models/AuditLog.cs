@@ -1,22 +1,27 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SegurosApp.API.Models
 {
+    [Table("AuditLogs")]
     public class AuditLog
     {
-        public long Id { get; set; }
+        [Key]
+        public int Id { get; set; }
+
         public int? UserId { get; set; }
 
-        [Required, MaxLength(100)]
+        [Required]
+        [MaxLength(100)]
         public string Action { get; set; } = string.Empty;
 
         [MaxLength(50)]
         public string? EntityType { get; set; }
 
-        [MaxLength(100)]
+        [MaxLength(50)]
         public string? EntityId { get; set; }
 
-        public string? Details { get; set; } // JSON
+        public string? Details { get; set; }
 
         [MaxLength(45)]
         public string? IpAddress { get; set; }
@@ -24,12 +29,11 @@ namespace SegurosApp.API.Models
         [MaxLength(500)]
         public string? UserAgent { get; set; }
 
-        public bool Success { get; set; } = true;
-        public string? ErrorMessage { get; set; }
-
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        [Required]
+        public DateTime Timestamp { get; set; }
 
         // Navigation properties
-        public User? User { get; set; }
+        [ForeignKey("UserId")]
+        public virtual User? User { get; set; }
     }
 }
