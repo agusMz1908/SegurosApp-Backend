@@ -737,34 +737,25 @@ namespace SegurosApp.API.Services
                 metrics.FailedScans++;
             }
 
-            // ✅ CORREGIDO: Cálculo simplificado para evitar errores de tipos
             if (metrics.TotalScans == 1)
             {
-                metrics.AverageProcessingTimeMs = processingTime;
-                metrics.AverageSuccessRate = successRate;
+                metrics.AvgProcessingTimeMs = processingTime;
+                metrics.AvgSuccessRate = successRate;
             }
             else
             {
                 var totalScansDecimal = (decimal)metrics.TotalScans;
                 var processingTimeDecimal = (decimal)processingTime;
 
-                metrics.AverageProcessingTimeMs =
-                    (metrics.AverageProcessingTimeMs * (totalScansDecimal - 1) + processingTimeDecimal) / totalScansDecimal;
+                metrics.AvgProcessingTimeMs =
+                    (metrics.AvgProcessingTimeMs * (totalScansDecimal - 1) + processingTimeDecimal) / totalScansDecimal;
 
-                metrics.AverageSuccessRate =
-                    (metrics.AverageSuccessRate * (totalScansDecimal - 1) + successRate) / totalScansDecimal;
+                metrics.AvgSuccessRate =
+                    (metrics.AvgSuccessRate * (totalScansDecimal - 1) + successRate) / totalScansDecimal;
             }
 
             await _context.SaveChangesAsync();
         }
-    }
 
-    public class AzureDocumentResult
-    {
-        public string AzureOperationId { get; set; } = string.Empty;
-        public decimal SuccessRate { get; set; }
-        public int FieldsExtracted { get; set; }
-        public int TotalFieldsAttempted { get; set; }
-        public Dictionary<string, object> ExtractedFields { get; set; } = new();
     }
 }

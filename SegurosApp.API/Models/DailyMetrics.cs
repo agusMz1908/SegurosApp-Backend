@@ -16,8 +16,9 @@ namespace SegurosApp.API.Models
         public int SuccessfulScans { get; set; }
         public int FailedScans { get; set; }
         public int BillableScans { get; set; }
-        public decimal AverageProcessingTimeMs { get; set; }
-        public decimal AverageSuccessRate { get; set; }
+        public decimal AvgProcessingTimeMs { get; set; }
+        public decimal AvgSuccessRate { get; set; }
+
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;
     }
