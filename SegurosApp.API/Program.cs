@@ -69,12 +69,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddScoped<IAuthService, AuthService>(); 
+// ✅ AGREGAR MEMORY CACHE - ESTO FALTABA
+builder.Services.AddMemoryCache();
+
+// ✅ Servicios principales
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAzureDocumentService, AzureDocumentService>();
 builder.Services.AddScoped<IVelneoMasterDataService, VelneoMasterDataService>();
 builder.Services.AddScoped<DocumentFieldParser>();
-builder.Services.AddHttpClient<VelneoMasterDataService>();
 
+// ✅ HttpClient para VelneoMasterDataService
+builder.Services.AddHttpClient<VelneoMasterDataService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -171,7 +176,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-app.UseAuthentication(); 
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
@@ -232,6 +237,7 @@ logger.LogInformation("🌐 CORS: Permitir cualquier origen");
 logger.LogInformation("🔐 JWT Authentication: Habilitado");
 logger.LogInformation("📊 Swagger: Disponible en /swagger con autenticación JWT");
 logger.LogInformation("🗄️ Base de datos: MySQL configurada");
+logger.LogInformation("💾 Memory Cache: Configurado para datos maestros Velneo");
 
 var azureEndpoint = builder.Configuration["AzureDocumentIntelligence:Endpoint"];
 if (string.IsNullOrEmpty(azureEndpoint))

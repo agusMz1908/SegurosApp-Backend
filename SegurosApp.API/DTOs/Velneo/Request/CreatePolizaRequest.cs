@@ -2,21 +2,28 @@
 {
     public class CreatePolizaRequest
     {
-        public int ScanId { get; set; } 
-        public int CompaniaId { get; set; }
-        public int ClienteId { get; set; }
-        public int? TomadorId { get; set; }
-        public int CorredorId { get; set; }
-        public int CategoriaId { get; set; }
-        public int DestinoId { get; set; }
-        public int CalidadId { get; set; }
-        public int DepartamentoId { get; set; }
-        public int TarifaId { get; set; }
-        public string CombustibleId { get; set; } = string.Empty;
-        public string EstadoGestion { get; set; } = "1";
-        public string Tramite { get; set; } = "1"; 
-        public string EstadoPoliza { get; set; } = "1"; 
-        public string FormaPago { get; set; } = "1"; 
-        public Dictionary<string, object> CamposAdicionales { get; set; } = new();
+        public int ScanId { get; set; }
+        public int ClientId { get; set; }
+        public int BrokerId { get; set; }
+        public int CompanyId { get; set; }
+        public int DepartmentId { get; set; }
+        public string FuelId { get; set; } = "";
+        public int DestinationId { get; set; }
+        public int CategoryId { get; set; }
+        public int QualityId { get; set; }
+        public int TariffId { get; set; }
+        public string PolicyNumber { get; set; } = "";
+        public string StartDate { get; set; } = "";
+        public string EndDate { get; set; } = "";
+        public decimal Premium { get; set; } = 0;
+        public string PaymentMethod { get; set; } = "";
+        public int InstallmentCount { get; set; } = 1;
+        public string VehicleBrand { get; set; } = "";
+        public string VehicleModel { get; set; } = "";
+        public int VehicleYear { get; set; } = 0;
+        public string MotorNumber { get; set; } = "";
+        public string ChassisNumber { get; set; } = "";
+        public string Notes { get; set; } = "";
+        public List<string> CorrectedFields { get; set; } = new();
     }
 }

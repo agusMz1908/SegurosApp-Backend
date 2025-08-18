@@ -1,8 +1,4 @@
-﻿// ===============================
-// CONTROLLER DE MASTER DATA
-// ===============================
-
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SegurosApp.API.DTOs;
 using SegurosApp.API.DTOs.Velneo.Item;
@@ -140,6 +136,7 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+        // ✅ ENDPOINTS INDIVIDUALES DE MASTER DATA
         [HttpGet("departamentos")]
         public async Task<ActionResult<List<DepartamentoItem>>> GetDepartamentos()
         {
@@ -250,7 +247,6 @@ namespace SegurosApp.API.Controllers
         {
             try
             {
-                // Verificar conectividad obteniendo combustibles (endpoint más pequeño)
                 var combustibles = await _masterDataService.GetCombustiblesAsync();
 
                 return Ok(new
@@ -284,10 +280,7 @@ namespace SegurosApp.API.Controllers
         }
     }
 
-    // ===============================
     // REQUEST DTOS
-    // ===============================
-
     public class SuggestMappingRequest
     {
         public string FieldName { get; set; } = string.Empty;
