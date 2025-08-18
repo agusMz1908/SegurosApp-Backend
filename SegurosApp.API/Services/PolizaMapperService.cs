@@ -1,4 +1,9 @@
-﻿using SegurosApp.API.DTOs.Velneo.Request;
+﻿using Microsoft.EntityFrameworkCore;
+using SegurosApp.API.Data;
+using SegurosApp.API.DTOs;
+using SegurosApp.API.DTOs.SegurosApp.API.DTOs;
+using SegurosApp.API.DTOs.Velneo.Request;
+using SegurosApp.API.DTOs.Velneo.Response;
 using SegurosApp.API.Interfaces;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -8,75 +13,506 @@ namespace SegurosApp.API.Services
     public class PolizaMapperService
     {
         private readonly IVelneoMasterDataService _masterDataService;
+        private readonly AppDbContext _context;
         private readonly ILogger<PolizaMapperService> _logger;
 
         public PolizaMapperService(
             IVelneoMasterDataService masterDataService,
+            AppDbContext context,
             ILogger<PolizaMapperService> logger)
         {
             _masterDataService = masterDataService;
+            _context = context;
             _logger = logger;
         }
 
         /// <summary>
-        /// 🎯 Convierte datos escaneados a estructura Velneo con mapeo inteligente
+        /// 🎯 NUEVO: Mapear con contexto de pre-selección
         /// </summary>
-        public async Task<CreatePolizaVelneoRequest> MapToVelneoAsync(
+        public async Task<PolizaMappingWithContextResponse> MapToPolizaWithContextAsync(
             Dictionary<string, object> extractedData,
-            int scanId,
-            int userId)
+            PreSelectionContext context)
         {
-            _logger.LogInformation("🔄 Iniciando mapeo de datos escaneados a Velneo para scan {ScanId}", scanId);
+            _logger.LogInformation("🔄 Iniciando mapeo con contexto para scan {ScanId} - Cliente:{ClienteId}, Compañía:{CompaniaId}, Sección:{SeccionId}",
+                context.ScanId, context.ClienteId, context.CompaniaId, context.SeccionId);
 
-            var velneoRequest = new CreatePolizaVelneoRequest
+            var response = new PolizaMappingWithContextResponse();
+
+            try
             {
-                id = 0, // Lo asigna Velneo
+                // ✅ PASO 1: MAPEAR DATOS BÁSICOS
+                var mappedData = await MapBasicPolizaDataAsync(extractedData, context);
+                response.MappedData = mappedData;
 
-                // ✅ CAMPOS BÁSICOS DE LA PÓLIZA
-                conpol = ExtractPolicyNumber(extractedData),
-                conend = ExtractEndorsement(extractedData),
-                confchdes = ExtractStartDate(extractedData),
-                confchhas = ExtractEndDate(extractedData),
-                conpremio = ExtractPremium(extractedData),
-                contot = ExtractTotalAmount(extractedData),
+                // ✅ PASO 2: VALIDAR CAMPOS CRÍTICOS
+                var criticalValidation = ValidateCriticalFields(mappedData, extractedData);
 
-                // ✅ DATOS DEL VEHÍCULO (texto directo)
-                conmaraut = ExtractVehicleBrand(extractedData),
-                conmotor = ExtractMotorNumber(extractedData),
-                conchasis = ExtractChassisNumber(extractedData),
-                conanioaut = ExtractVehicleYear(extractedData),
+                // ✅ PASO 3: GENERAR SUGERENCIAS AUTOMÁTICAS
+                var suggestions = await GenerateAutoSuggestionsAsync(extractedData, mappedData);
+                response.AutoSuggestions = suggestions;
 
-                // ✅ MAPEO A IDs Y CÓDIGOS (requiere búsqueda)
-                clinro = await FindClientIdAsync(extractedData),
-                corrnom = await FindBrokerIdAsync(extractedData),
-                dptnom = await FindDepartmentIdAsync(extractedData),
-                combustibles = await FindFuelCodeAsync(extractedData),
-                desdsc = await FindDestinationIdAsync(extractedData),
-                catdsc = await FindCategoryIdAsync(extractedData),
-                caldsc = await FindQualityIdAsync(extractedData),
-                tarcod = await FindTariffIdAsync(extractedData),
+                // ✅ PASO 4: IDENTIFICAR CAMPOS QUE REQUIEREN ATENCIÓN
+                var requiresAttention = IdentifyFieldsRequiringAttention(mappedData, extractedData);
+                response.RequiresAttention = requiresAttention;
 
-                // ✅ FORMA DE PAGO Y CUOTAS
-                consta = MapPaymentMethod(extractedData),
-                concuo = ExtractInstallmentCount(extractedData),
+                // ✅ PASO 5: CALCULAR COMPLETITUD
+                var metrics = CalculateMappingMetrics(mappedData, extractedData, criticalValidation);
+                response.MappingMetrics = metrics;
+                response.CompletionPercentage = metrics.OverallCompletionPercentage;
 
-                // ✅ DATOS DE GESTIÓN (valores por defecto inteligentes)
-                congesti = "1", // En emisión
-                contra = MapMovementType(extractedData),
-                convig = "1", // Vigente
-                moncod = 858, // Peso uruguayo (ISO)
+                // ✅ PASO 6: DETERMINAR SI ESTÁ LISTO
+                response.IsComplete = DetermineIfComplete(mappedData, criticalValidation, requiresAttention);
 
-                // ✅ METADATOS
-                ingresado = DateTime.UtcNow,
-                last_update = DateTime.UtcNow,
-                app_id = scanId // Referencia al escaneo original
-            };
+                // ✅ PASO 7: CAMPOS CONFIRMADOS POR PRE-SELECCIÓN
+                response.ConfirmedByPreSelection = new List<string>
+                {
+                    "cliente", "compania", "seccion"
+                };
 
-            await LogMappingResults(velneoRequest, extractedData);
-            return velneoRequest;
+                _logger.LogInformation("✅ Mapeo con contexto completado: {CompletionPercentage:F1}% - Listo: {IsComplete}",
+                    response.CompletionPercentage, response.IsComplete);
+
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error en mapeo con contexto para scan {ScanId}", context.ScanId);
+
+                return new PolizaMappingWithContextResponse
+                {
+                    IsComplete = false,
+                    CompletionPercentage = 0,
+                    RequiresAttention = new List<FieldMappingIssue>
+                    {
+                        new FieldMappingIssue
+                        {
+                            FieldName = "general",
+                            IssueType = "ProcessingError",
+                            Description = $"Error procesando mapeo: {ex.Message}",
+                            Severity = "Error"
+                        }
+                    }
+                };
+            }
         }
 
-        #region Extracción de Campos Básicos
+        /// <summary>
+        /// 🚀 NUEVO: Crear request Velneo desde scan con contexto
+        /// </summary>
+        public async Task<VelneoPolizaRequest> CreateVelneoRequestFromScanAsync(
+            int scanId,
+            int userId,
+            CreatePolizaVelneoRequest? overrides = null)
+        {
+            _logger.LogInformation("🚀 Creando request Velneo para scan {ScanId}", scanId);
+
+            // ✅ OBTENER DATOS DEL SCAN
+            var scan = await _context.DocumentScans
+                .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
+
+            if (scan == null)
+            {
+                throw new ArgumentException($"Scan {scanId} no encontrado para usuario {userId}");
+            }
+
+            var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
+                ?? new Dictionary<string, object>();
+
+            // ✅ CREAR REQUEST BASE
+            var request = new VelneoPolizaRequest
+            {
+                // IDs del contexto (deben venir de overrides o estar guardados en scan)
+                clinro = overrides?.ClienteId ?? 0,
+                comcod = overrides?.CompaniaId ?? 0,
+                seccod = overrides?.SeccionId ?? 0,
+
+                // ✅ DATOS DE PÓLIZA (con overrides)
+                conpol = overrides?.PolicyNumberOverride ?? ExtractPolicyNumber(extractedData),
+                conend = ExtractEndorsement(extractedData),
+                confchdes = overrides?.StartDateOverride ?? ExtractStartDate(extractedData),
+                confchhas = overrides?.EndDateOverride ?? ExtractEndDate(extractedData),
+                conpremio = (int)(overrides?.PremiumOverride ?? ExtractPremium(extractedData)),
+                contot = (int)(overrides?.PremiumOverride ?? ExtractTotalAmount(extractedData)),
+
+                // ✅ DATOS VEHÍCULO (con overrides)
+                conmaraut = overrides?.VehicleBrandOverride ?? ExtractVehicleBrand(extractedData),
+                conmodaut = overrides?.VehicleModelOverride ?? ExtractVehicleModel(extractedData),
+                conanioaut = overrides?.VehicleYearOverride ?? ExtractVehicleYear(extractedData),
+                conmotor = overrides?.MotorNumberOverride ?? ExtractMotorNumber(extractedData),
+                conchasis = overrides?.ChassisNumberOverride ?? ExtractChassisNumber(extractedData),
+
+                // ✅ MAPEOS A MASTER DATA (con overrides o mapeo automático)
+                dptnom = overrides?.DepartmentIdOverride ?? await FindDepartmentIdAsync(extractedData),
+                combustibles = overrides?.FuelCodeOverride ?? await FindFuelCodeAsync(extractedData),
+                desdsc = overrides?.DestinationIdOverride ?? await FindDestinationIdAsync(extractedData),
+                catdsc = overrides?.CategoryIdOverride ?? await FindCategoryIdAsync(extractedData),
+                caldsc = overrides?.QualityIdOverride ?? await FindQualityIdAsync(extractedData),
+                tarcod = overrides?.TariffIdOverride ?? await FindTariffIdAsync(extractedData),
+
+                // ✅ FORMA DE PAGO
+                consta = MapPaymentMethodCode(overrides?.PaymentMethodOverride ?? ExtractPaymentMethod(extractedData)),
+                concuo = overrides?.InstallmentCountOverride ?? ExtractInstallmentCount(extractedData),
+
+                // ✅ METADATOS
+                app_id = scanId,
+                observaciones = $"Generado desde escaneo automático. {overrides?.Notes ?? ""}".Trim()
+            };
+
+            // ✅ VALIDAR REQUEST
+            await ValidateVelneoRequest(request);
+
+            _logger.LogInformation("✅ Request Velneo creado: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}",
+                request.conpol, request.clinro, request.comcod);
+
+            return request;
+        }
+
+        #region Mapeo de Datos Básicos
+
+        private async Task<PolizaDataMapped> MapBasicPolizaDataAsync(
+            Dictionary<string, object> extractedData,
+            PreSelectionContext context)
+        {
+            return new PolizaDataMapped
+            {
+                // ✅ DATOS DE PÓLIZA
+                NumeroPoliza = ExtractPolicyNumber(extractedData),
+                Endoso = ExtractEndorsement(extractedData),
+                FechaDesde = ExtractStartDate(extractedData),
+                FechaHasta = ExtractEndDate(extractedData),
+                Premio = ExtractPremium(extractedData),
+                MontoTotal = ExtractTotalAmount(extractedData),
+
+                // ✅ DATOS VEHÍCULO
+                VehiculoMarca = ExtractVehicleBrand(extractedData),
+                VehiculoModelo = ExtractVehicleModel(extractedData),
+                VehiculoAño = ExtractVehicleYear(extractedData),
+                VehiculoMotor = ExtractMotorNumber(extractedData),
+                VehiculoChasis = ExtractChassisNumber(extractedData),
+                VehiculoCombustible = ExtractFuelType(extractedData),
+                VehiculoDestino = ExtractDestination(extractedData),
+                VehiculoCategoria = ExtractCategory(extractedData),
+
+                // ✅ FORMA DE PAGO
+                MedioPago = ExtractPaymentMethod(extractedData),
+                CantidadCuotas = ExtractInstallmentCount(extractedData),
+                TipoMovimiento = ExtractMovementType(extractedData),
+
+                // ✅ DATOS DEL CONTEXTO (ya confirmados)
+                AseguradoNombre = "[Confirmado por selección]",
+                AseguradoDocumento = "[Confirmado por selección]"
+            };
+        }
+
+        #endregion
+
+        #region Validación de Campos Críticos
+
+        private CriticalFieldsStatus ValidateCriticalFields(
+            PolizaDataMapped mappedData,
+            Dictionary<string, object> extractedData)
+        {
+            var status = new CriticalFieldsStatus();
+
+            // ✅ NÚMERO DE PÓLIZA
+            if (!string.IsNullOrEmpty(mappedData.NumeroPoliza) && mappedData.NumeroPoliza.Length >= 7)
+            {
+                status.HasPolicyNumber = true;
+                status.FoundCritical.Add("Número de Póliza");
+            }
+            else
+            {
+                status.MissingCritical.Add("Número de Póliza");
+            }
+
+            // ✅ INFO VEHÍCULO
+            if (!string.IsNullOrEmpty(mappedData.VehiculoMarca) || !string.IsNullOrEmpty(mappedData.VehiculoModelo))
+            {
+                status.HasVehicleInfo = true;
+                status.FoundCritical.Add("Información del Vehículo");
+            }
+            else
+            {
+                status.MissingCritical.Add("Información del Vehículo");
+            }
+
+            // ✅ RANGO DE FECHAS
+            if (!string.IsNullOrEmpty(mappedData.FechaDesde) && !string.IsNullOrEmpty(mappedData.FechaHasta))
+            {
+                status.HasDateRange = true;
+                status.FoundCritical.Add("Rango de Fechas");
+            }
+            else
+            {
+                status.MissingCritical.Add("Rango de Fechas");
+            }
+
+            // ✅ INFO DE PREMIO
+            if (mappedData.Premio > 0 || mappedData.MontoTotal > 0)
+            {
+                status.HasPremiumInfo = true;
+                status.FoundCritical.Add("Información de Premio");
+            }
+            else
+            {
+                status.MissingCritical.Add("Información de Premio");
+            }
+
+            return status;
+        }
+
+        #endregion
+
+        #region Sugerencias Automáticas
+
+        private async Task<List<FieldSuggestion>> GenerateAutoSuggestionsAsync(
+            Dictionary<string, object> extractedData,
+            PolizaDataMapped mappedData)
+        {
+            var suggestions = new List<FieldSuggestion>();
+
+            try
+            {
+                // ✅ SUGERENCIA PARA COMBUSTIBLE
+                if (!string.IsNullOrEmpty(mappedData.VehiculoCombustible))
+                {
+                    var fuelSuggestion = await _masterDataService.SuggestMappingAsync("combustible", mappedData.VehiculoCombustible);
+                    if (fuelSuggestion.Confidence >= 0.7)
+                    {
+                        suggestions.Add(new FieldSuggestion
+                        {
+                            FieldName = "vehiculo.combustible",
+                            DisplayName = "Combustible",
+                            ScannedValue = mappedData.VehiculoCombustible,
+                            SuggestedValue = fuelSuggestion.SuggestedValue!,
+                            SuggestedLabel = fuelSuggestion.SuggestedLabel!,
+                            Confidence = fuelSuggestion.Confidence,
+                            Source = "AutoMapping"
+                        });
+                    }
+                }
+
+                // ✅ SUGERENCIA PARA DESTINO
+                if (!string.IsNullOrEmpty(mappedData.VehiculoDestino))
+                {
+                    var destinoSuggestion = await _masterDataService.SuggestMappingAsync("destino", mappedData.VehiculoDestino);
+                    if (destinoSuggestion.Confidence >= 0.7)
+                    {
+                        suggestions.Add(new FieldSuggestion
+                        {
+                            FieldName = "vehiculo.destino",
+                            DisplayName = "Destino del Vehículo",
+                            ScannedValue = mappedData.VehiculoDestino,
+                            SuggestedValue = destinoSuggestion.SuggestedValue!,
+                            SuggestedLabel = destinoSuggestion.SuggestedLabel!,
+                            Confidence = destinoSuggestion.Confidence,
+                            Source = "AutoMapping"
+                        });
+                    }
+                }
+
+                // ✅ SUGERENCIA PARA CATEGORÍA
+                if (!string.IsNullOrEmpty(mappedData.VehiculoCategoria))
+                {
+                    var categoriaSuggestion = await _masterDataService.SuggestMappingAsync("categoria", mappedData.VehiculoCategoria);
+                    if (categoriaSuggestion.Confidence >= 0.7)
+                    {
+                        suggestions.Add(new FieldSuggestion
+                        {
+                            FieldName = "vehiculo.categoria",
+                            DisplayName = "Categoría del Vehículo",
+                            ScannedValue = mappedData.VehiculoCategoria,
+                            SuggestedValue = categoriaSuggestion.SuggestedValue!,
+                            SuggestedLabel = categoriaSuggestion.SuggestedLabel!,
+                            Confidence = categoriaSuggestion.Confidence,
+                            Source = "AutoMapping"
+                        });
+                    }
+                }
+
+                _logger.LogInformation("💡 Generadas {Count} sugerencias automáticas", suggestions.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error generando sugerencias automáticas");
+            }
+
+            return suggestions;
+        }
+
+        #endregion
+
+        #region Campos que Requieren Atención
+
+        private List<FieldMappingIssue> IdentifyFieldsRequiringAttention(
+            PolizaDataMapped mappedData,
+            Dictionary<string, object> extractedData)
+        {
+            var issues = new List<FieldMappingIssue>();
+
+            // ✅ NÚMERO DE PÓLIZA
+            if (string.IsNullOrEmpty(mappedData.NumeroPoliza))
+            {
+                issues.Add(new FieldMappingIssue
+                {
+                    FieldName = "numeroPoliza",
+                    DisplayName = "Número de Póliza",
+                    ScannedValue = GetValue(extractedData, "poliza.numero", "datos_poliza"),
+                    IssueType = "MissingCritical",
+                    Description = "No se pudo extraer el número de póliza del documento",
+                    Severity = "Error",
+                    IsRequired = true
+                });
+            }
+            else if (mappedData.NumeroPoliza.Length < 7)
+            {
+                issues.Add(new FieldMappingIssue
+                {
+                    FieldName = "numeroPoliza",
+                    DisplayName = "Número de Póliza",
+                    ScannedValue = mappedData.NumeroPoliza,
+                    IssueType = "InvalidFormat",
+                    Description = "El número de póliza parece incompleto (menos de 7 dígitos)",
+                    Severity = "Warning",
+                    IsRequired = true
+                });
+            }
+
+            // ✅ FECHAS
+            if (string.IsNullOrEmpty(mappedData.FechaDesde) || string.IsNullOrEmpty(mappedData.FechaHasta))
+            {
+                issues.Add(new FieldMappingIssue
+                {
+                    FieldName = "vigencia",
+                    DisplayName = "Fechas de Vigencia",
+                    ScannedValue = $"Desde: {mappedData.FechaDesde}, Hasta: {mappedData.FechaHasta}",
+                    IssueType = "MissingCritical",
+                    Description = "No se pudieron extraer las fechas de vigencia completamente",
+                    Severity = "Error",
+                    IsRequired = true
+                });
+            }
+
+            // ✅ INFORMACIÓN VEHÍCULO
+            if (string.IsNullOrEmpty(mappedData.VehiculoMarca) && string.IsNullOrEmpty(mappedData.VehiculoModelo))
+            {
+                issues.Add(new FieldMappingIssue
+                {
+                    FieldName = "vehiculo",
+                    DisplayName = "Información del Vehículo",
+                    ScannedValue = GetValue(extractedData, "vehiculo.marca", "vehiculo.modelo"),
+                    IssueType = "MissingCritical",
+                    Description = "No se pudo extraer información básica del vehículo (marca/modelo)",
+                    Severity = "Warning",
+                    IsRequired = false
+                });
+            }
+
+            // ✅ PREMIO/MONTO
+            if (mappedData.Premio <= 0 && mappedData.MontoTotal <= 0)
+            {
+                issues.Add(new FieldMappingIssue
+                {
+                    FieldName = "premio",
+                    DisplayName = "Información de Premio",
+                    ScannedValue = GetValue(extractedData, "poliza.prima_comercial", "financiero.premio_total"),
+                    IssueType = "MissingCritical",
+                    Description = "No se pudo extraer información de premio/monto de la póliza",
+                    Severity = "Warning",
+                    IsRequired = false
+                });
+            }
+
+            return issues;
+        }
+
+        #endregion
+
+        #region Métricas de Mapeo
+
+        private MappingMetrics CalculateMappingMetrics(
+            PolizaDataMapped mappedData,
+            Dictionary<string, object> extractedData,
+            CriticalFieldsStatus criticalStatus)
+        {
+            var totalFields = 20; 
+            var mappedFields = CountMappedFields(mappedData);
+
+            return new MappingMetrics
+            {
+                TotalFieldsScanned = extractedData.Count,
+                FieldsMappedSuccessfully = mappedFields,
+                FieldsWithIssues = 0, 
+                FieldsRequireAttention = 0,
+                OverallConfidence = criticalStatus.CriticalFieldsCompleteness,
+                MappingQuality = DetermineMappingQuality(criticalStatus.CriticalFieldsCompleteness),
+                MissingCriticalFields = criticalStatus.MissingCritical,
+                OverallCompletionPercentage = (decimal)mappedFields / totalFields * 100
+            };
+        }
+
+        private int CountMappedFields(PolizaDataMapped data)
+        {
+            int count = 0;
+
+            if (!string.IsNullOrEmpty(data.NumeroPoliza)) count++;
+            if (!string.IsNullOrEmpty(data.Endoso) && data.Endoso != "0") count++;
+            if (!string.IsNullOrEmpty(data.FechaDesde)) count++;
+            if (!string.IsNullOrEmpty(data.FechaHasta)) count++;
+            if (data.Premio > 0) count++;
+            if (data.MontoTotal > 0) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoMarca)) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoModelo)) count++;
+            if (data.VehiculoAño > 0) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoMotor)) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoChasis)) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoCombustible)) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoDestino)) count++;
+            if (!string.IsNullOrEmpty(data.VehiculoCategoria)) count++;
+            if (!string.IsNullOrEmpty(data.MedioPago)) count++;
+            if (data.CantidadCuotas > 0) count++;
+            if (!string.IsNullOrEmpty(data.TipoMovimiento)) count++;
+
+            return count;
+        }
+
+        private string DetermineMappingQuality(decimal completeness)
+        {
+            return completeness switch
+            {
+                >= 90 => "Excelente",
+                >= 75 => "Buena",
+                >= 50 => "Aceptable",
+                >= 25 => "Básica",
+                _ => "Insuficiente"
+            };
+        }
+
+        #endregion
+
+        #region Determinación de Completitud
+
+        private bool DetermineIfComplete(
+            PolizaDataMapped mappedData,
+            CriticalFieldsStatus criticalStatus,
+            List<FieldMappingIssue> issues)
+        {
+            // ✅ CRITERIOS MÍNIMOS PARA ESTAR "COMPLETO"
+            var hasEssentials = !string.IsNullOrEmpty(mappedData.NumeroPoliza) &&
+                               mappedData.NumeroPoliza.Length >= 7 &&
+                               !string.IsNullOrEmpty(mappedData.FechaDesde) &&
+                               !string.IsNullOrEmpty(mappedData.FechaHasta);
+
+            var hasNoErrors = !issues.Any(i => i.Severity == "Error");
+
+            var criticalFieldsOk = criticalStatus.CriticalFieldsCompleteness >= 75;
+
+            return hasEssentials && hasNoErrors && criticalFieldsOk;
+        }
+
+        #endregion
+
+        #region Métodos de Extracción (reutilizados del service original)
 
         private string ExtractPolicyNumber(Dictionary<string, object> data)
         {
@@ -89,24 +525,19 @@ namespace SegurosApp.API.Services
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    // Extraer número de póliza del texto
                     var match = Regex.Match(value, @"(\d{7,9})");
                     if (match.Success)
                     {
-                        _logger.LogInformation("✅ Número de póliza extraído: {PolicyNumber}", match.Groups[1].Value);
                         return match.Groups[1].Value;
                     }
                 }
             }
-
-            _logger.LogWarning("⚠️ No se pudo extraer número de póliza");
             return "";
         }
 
         private string ExtractEndorsement(Dictionary<string, object> data)
         {
             var possibleFields = new[] { "poliza.endoso", "endoso", "datos_poliza" };
-
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
@@ -118,8 +549,7 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-
-            return "0"; // Default para nueva emisión
+            return "0";
         }
 
         private string ExtractStartDate(Dictionary<string, object> data)
@@ -128,8 +558,7 @@ namespace SegurosApp.API.Services
                 "poliza.vigencia.desde", "vigencia_desde", "confchdes",
                 "datos_poliza", "vigencia.desde"
             };
-
-            return ExtractDateFromFields(data, possibleFields, "fecha de inicio");
+            return ExtractDateFromFields(data, possibleFields);
         }
 
         private string ExtractEndDate(Dictionary<string, object> data)
@@ -138,54 +567,25 @@ namespace SegurosApp.API.Services
                 "poliza.vigencia.hasta", "vigencia_hasta", "confchhas",
                 "datos_poliza", "vigencia.hasta"
             };
-
-            return ExtractDateFromFields(data, possibleFields, "fecha de fin");
+            return ExtractDateFromFields(data, possibleFields);
         }
 
-        private int ExtractPremium(Dictionary<string, object> data)
+        private decimal ExtractPremium(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
                 "poliza.prima_comercial", "prima_comercial", "conpremio",
                 "financiero.prima_comercial", "datos_poliza"
             };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var amount = ExtractAmountFromText(value);
-                    if (amount > 0)
-                    {
-                        _logger.LogInformation("✅ Premio extraído: {Premium}", amount);
-                        return (int)amount;
-                    }
-                }
-            }
-
-            _logger.LogWarning("⚠️ No se pudo extraer premio");
-            return 0;
+            return ExtractAmountFromFields(data, possibleFields);
         }
 
-        private int ExtractTotalAmount(Dictionary<string, object> data)
+        private decimal ExtractTotalAmount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
                 "financiero.premio_total", "premio_total", "contot",
                 "PREMIO TOTAL A PAGAR", "datos_poliza"
             };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var amount = ExtractAmountFromText(value);
-                    if (amount > 0)
-                    {
-                        return (int)amount;
-                    }
-                }
-            }
-
-            return 0;
+            return ExtractAmountFromFields(data, possibleFields);
         }
 
         private string ExtractVehicleBrand(Dictionary<string, object> data)
@@ -193,39 +593,20 @@ namespace SegurosApp.API.Services
             var possibleFields = new[] {
                 "vehiculo.marca", "marca", "MARCA", "conmaraut"
             };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var brand = CleanVehicleBrand(value);
-                    if (!string.IsNullOrEmpty(brand))
-                    {
-                        _logger.LogInformation("✅ Marca extraída: {Brand}", brand);
-                        return brand;
-                    }
-                }
-            }
-
-            return "";
+            return GetFirstValidValue(data, possibleFields);
         }
 
-        private string ExtractMotorNumber(Dictionary<string, object> data)
+        private string ExtractVehicleModel(Dictionary<string, object> data)
         {
-            var possibleFields = new[] { "vehiculo.motor", "motor", "MOTOR", "conmotor" };
-            return ExtractFirstValidValue(data, possibleFields, "número de motor");
-        }
-
-        private string ExtractChassisNumber(Dictionary<string, object> data)
-        {
-            var possibleFields = new[] { "vehiculo.chasis", "chasis", "CHASIS", "conchasis" };
-            return ExtractFirstValidValue(data, possibleFields, "número de chasis");
+            var possibleFields = new[] {
+                "vehiculo.modelo", "modelo", "MODELO", "conmodaut"
+            };
+            return GetFirstValidValue(data, possibleFields);
         }
 
         private int ExtractVehicleYear(Dictionary<string, object> data)
         {
             var possibleFields = new[] { "vehiculo.anio", "vehiculo.año", "año", "AÑO", "conanioaut" };
-
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
@@ -233,98 +614,87 @@ namespace SegurosApp.API.Services
                     var match = Regex.Match(value, @"\b(20\d{2}|19\d{2})\b");
                     if (match.Success && int.TryParse(match.Groups[1].Value, out var year))
                     {
-                        _logger.LogInformation("✅ Año extraído: {Year}", year);
                         return year;
                     }
                 }
             }
-
             return 0;
+        }
+
+        private string ExtractMotorNumber(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] { "vehiculo.motor", "motor", "MOTOR", "conmotor" };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string ExtractChassisNumber(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] { "vehiculo.chasis", "chasis", "CHASIS", "conchasis" };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string ExtractFuelType(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "vehiculo.combustible", "combustible", "COMBUSTIBLE"
+            };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string ExtractDestination(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "vehiculo.destino_del_vehiculo", "destino", "DESTINO DEL VEHÍCULO"
+            };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string ExtractCategory(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "vehiculo.tipo_vehiculo", "categoria", "TIPO DE VEHÍCULO"
+            };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string ExtractPaymentMethod(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] { "pago.medio", "medio_pago", "forma_pago", "consta" };
+            return GetFirstValidValue(data, possibleFields);
         }
 
         private int ExtractInstallmentCount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "pago.modo_facturacion", "modo_facturacion", "cuotas", "concuo"
+                "cantidadCuotas", "cantidad_cuotas", "installments", "cuotas"
             };
 
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    var match = Regex.Match(value, @"(\d{1,2})\s*cuotas?", RegexOptions.IgnoreCase);
+                    var match = Regex.Match(value, @"(\d+)");
                     if (match.Success && int.TryParse(match.Groups[1].Value, out var count))
                     {
-                        _logger.LogInformation("✅ Cantidad de cuotas extraída: {Count}", count);
                         return count;
                     }
                 }
             }
+            return 1;
+        }
 
-            return 1; // Default: contado
+        private string ExtractMovementType(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "tipoMovimiento", "tipo_movimiento", "movement_type",
+                "operacion", "operation", "tipo_operacion"
+            };
+            return GetFirstValidValue(data, possibleFields);
         }
 
         #endregion
 
-        #region Mapeo a IDs y Códigos (con búsqueda en master data)
-
-        private async Task<int> FindClientIdAsync(Dictionary<string, object> data)
-        {
-            var possibleFields = new[] {
-                "asegurado.nombre", "cliente_nombre", "clinro", "clinom"
-            };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var clientName = CleanClientName(value);
-                    if (!string.IsNullOrEmpty(clientName))
-                    {
-                        // TODO: Implementar búsqueda de cliente en Velneo
-                        _logger.LogInformation("🔍 Buscando cliente: {ClientName}", clientName);
-                        // return await _velneoClientService.FindClientByNameAsync(clientName);
-                    }
-                }
-            }
-
-            return 0; // No encontrado
-        }
-
-        private async Task<int> FindBrokerIdAsync(Dictionary<string, object> data)
-        {
-            var possibleFields = new[] {
-                "corredor.nombre", "corredor.numero", "corrnom"
-            };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    // Si es número, intentar convertir directamente
-                    var numberMatch = Regex.Match(value, @"(\d+)");
-                    if (numberMatch.Success && int.TryParse(numberMatch.Groups[1].Value, out var brokerId))
-                    {
-                        _logger.LogInformation("✅ ID de corredor extraído: {BrokerId}", brokerId);
-                        return brokerId;
-                    }
-
-                    // Si es nombre, buscar por nombre
-                    var masterData = await _masterDataService.GetAllMasterDataAsync();
-                    var brokerName = CleanBrokerName(value);
-                    var broker = masterData.Corredores.FirstOrDefault(c =>
-                        c.corrnom.Contains(brokerName, StringComparison.OrdinalIgnoreCase));
-
-                    if (broker != null)
-                    {
-                        _logger.LogInformation("✅ Corredor encontrado: {BrokerId} - {BrokerName}", broker.id, broker.corrnom);
-                        return broker.id;
-                    }
-                }
-            }
-
-            return 0;
-        }
+        #region Mapeos a IDs de Velneo (Master Data)
 
         private async Task<int> FindDepartmentIdAsync(Dictionary<string, object> data)
         {
@@ -339,13 +709,10 @@ namespace SegurosApp.API.Services
                     var suggestion = await _masterDataService.SuggestMappingAsync("departamento", value);
                     if (suggestion.Confidence >= 0.8 && int.TryParse(suggestion.SuggestedValue, out var deptId))
                     {
-                        _logger.LogInformation("✅ Departamento mapeado: {DeptName} → {DeptId} (confianza: {Confidence:P1})",
-                            value, deptId, suggestion.Confidence);
                         return deptId;
                     }
                 }
             }
-
             return 1; // Default: Montevideo
         }
 
@@ -362,13 +729,10 @@ namespace SegurosApp.API.Services
                     var suggestion = await _masterDataService.SuggestMappingAsync("combustible", value);
                     if (suggestion.Confidence >= 0.7)
                     {
-                        _logger.LogInformation("✅ Combustible mapeado: {FuelName} → {FuelCode} (confianza: {Confidence:P1})",
-                            value, suggestion.SuggestedValue, suggestion.Confidence);
                         return suggestion.SuggestedValue ?? "1";
                     }
                 }
             }
-
             return "1"; // Default
         }
 
@@ -389,7 +753,6 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-
             return 1; // Default
         }
 
@@ -410,7 +773,6 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-
             return 1; // Default
         }
 
@@ -428,55 +790,69 @@ namespace SegurosApp.API.Services
 
         #endregion
 
-        #region Mapeo de Códigos Estáticos
+        #region Mapeo de Códigos
 
-        private string MapPaymentMethod(Dictionary<string, object> data)
+        private string MapPaymentMethodCode(string paymentMethod)
         {
-            var possibleFields = new[] { "pago.medio", "medio_pago", "forma_pago", "consta" };
+            if (string.IsNullOrEmpty(paymentMethod)) return "1";
 
-            foreach (var field in possibleFields)
+            var normalized = paymentMethod.ToUpper();
+            return normalized switch
             {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var normalizedPayment = value.ToUpper();
-
-                    if (normalizedPayment.Contains("TARJETA") || normalizedPayment.Contains("CREDITO"))
-                        return "T";
-                    if (normalizedPayment.Contains("CONTADO") || normalizedPayment.Contains("EFECTIVO"))
-                        return "1";
-                    if (normalizedPayment.Contains("DEBITO") || normalizedPayment.Contains("BANCARIO"))
-                        return "B";
-                }
-            }
-
-            return "1"; // Default: Contado
-        }
-
-        private string MapMovementType(Dictionary<string, object> data)
-        {
-            var possibleFields = new[] { "poliza.tipo_movimiento", "tipo_movimiento", "contra" };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var normalized = value.ToUpper();
-
-                    if (normalized.Contains("EMISION") || normalized.Contains("NUEVA"))
-                        return "1"; // Nuevo
-                    if (normalized.Contains("RENOVACION"))
-                        return "2"; // Renovación
-                    if (normalized.Contains("ENDOSO"))
-                        return "4"; // Endoso
-                }
-            }
-
-            return "1"; // Default: Nuevo
+                var x when x.Contains("TARJETA") || x.Contains("CREDITO") => "T",
+                var x when x.Contains("CONTADO") || x.Contains("EFECTIVO") => "1",
+                var x when x.Contains("DEBITO") || x.Contains("BANCARIO") => "B",
+                var x when x.Contains("TRANSFERENCIA") => "B",
+                _ => "1" // Default: Contado
+            };
         }
 
         #endregion
 
-        #region Métodos de Utilidad
+        #region Validación del Request Velneo
+
+        private async Task ValidateVelneoRequest(VelneoPolizaRequest request)
+        {
+            var errors = new List<string>();
+
+            // ✅ VALIDAR IDs REQUERIDOS
+            if (request.clinro <= 0)
+                errors.Add("Cliente ID es requerido");
+
+            if (request.comcod <= 0)
+                errors.Add("Compañía ID es requerido");
+
+            if (request.seccod <= 0)
+                errors.Add("Sección ID es requerido");
+
+            // ✅ VALIDAR DATOS CRÍTICOS
+            if (string.IsNullOrEmpty(request.conpol))
+                errors.Add("Número de póliza es requerido");
+
+            if (string.IsNullOrEmpty(request.confchdes))
+                errors.Add("Fecha de inicio es requerida");
+
+            if (string.IsNullOrEmpty(request.confchhas))
+                errors.Add("Fecha de fin es requerida");
+
+            // ✅ VALIDAR FECHAS
+            if (!string.IsNullOrEmpty(request.confchdes) && !DateTime.TryParse(request.confchdes, out _))
+                errors.Add("Fecha de inicio tiene formato inválido");
+
+            if (!string.IsNullOrEmpty(request.confchhas) && !DateTime.TryParse(request.confchhas, out _))
+                errors.Add("Fecha de fin tiene formato inválido");
+
+            if (errors.Any())
+            {
+                throw new ValidationException($"Errores de validación: {string.Join(", ", errors)}");
+            }
+
+            _logger.LogInformation("✅ Request Velneo validado exitosamente");
+        }
+
+        #endregion
+
+        #region Métodos Auxiliares
 
         private bool TryGetValue(Dictionary<string, object> data, string key, out string value)
         {
@@ -489,7 +865,23 @@ namespace SegurosApp.API.Services
             return false;
         }
 
-        private string ExtractDateFromFields(Dictionary<string, object> data, string[] fields, string fieldType)
+        private string GetFirstValidValue(Dictionary<string, object> data, string[] possibleFields)
+        {
+            foreach (var field in possibleFields)
+            {
+                if (TryGetValue(data, field, out var value))
+                {
+                    var cleaned = CleanText(value);
+                    if (!string.IsNullOrEmpty(cleaned))
+                    {
+                        return cleaned;
+                    }
+                }
+            }
+            return "";
+        }
+
+        private string ExtractDateFromFields(Dictionary<string, object> data, string[] fields)
         {
             foreach (var field in fields)
             {
@@ -498,52 +890,53 @@ namespace SegurosApp.API.Services
                     var date = ParseDateFromText(value);
                     if (!string.IsNullOrEmpty(date))
                     {
-                        _logger.LogInformation("✅ {FieldType} extraída: {Date}", fieldType, date);
                         return date;
                     }
                 }
             }
-
-            _logger.LogWarning("⚠️ No se pudo extraer {FieldType}", fieldType);
             return DateTime.Today.ToString("yyyy-MM-dd");
         }
 
-        private string ExtractFirstValidValue(Dictionary<string, object> data, string[] fields, string fieldType)
+        private decimal ExtractAmountFromFields(Dictionary<string, object> data, string[] fields)
         {
             foreach (var field in fields)
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    var cleaned = CleanAlphanumeric(value);
-                    if (!string.IsNullOrEmpty(cleaned))
+                    var amount = ExtractAmountFromText(value);
+                    if (amount > 0)
                     {
-                        _logger.LogInformation("✅ {FieldType} extraído: {Value}", fieldType, cleaned);
-                        return cleaned;
+                        return amount;
                     }
                 }
             }
+            return 0;
+        }
 
+        private string GetValue(Dictionary<string, object> data, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (data.TryGetValue(key, out var value) && value != null)
+                {
+                    var text = value.ToString()?.Trim() ?? "";
+                    if (!string.IsNullOrEmpty(text))
+                        return text;
+                }
+            }
             return "";
         }
 
-        private decimal ExtractAmountFromText(string text)
+        private string CleanText(string input)
         {
-            if (string.IsNullOrEmpty(text)) return 0;
+            if (string.IsNullOrEmpty(input)) return "";
 
-            var match = Regex.Match(text, @"[\$\s]*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?)");
-            if (match.Success)
-            {
-                var amountStr = match.Groups[1].Value
-                    .Replace(".", "")  // Remover separadores de miles
-                    .Replace(",", "."); // Convertir coma decimal a punto
-
-                if (decimal.TryParse(amountStr, NumberStyles.Currency, CultureInfo.InvariantCulture, out var amount))
-                {
-                    return amount;
-                }
-            }
-
-            return 0;
+            return input
+                .Trim()
+                .Replace("  ", " ")
+                .Replace("\n", " ")
+                .Replace("\r", "")
+                .Replace("\t", " ");
         }
 
         private string ParseDateFromText(string text)
@@ -568,15 +961,8 @@ namespace SegurosApp.API.Services
                         var month = int.Parse(match.Groups[2].Value);
                         var year = int.Parse(match.Groups[3].Value);
 
-                        // Si el año está en la primera posición, ajustar
-                        if (year < 100) // Formato yy
-                        {
-                            year += 2000;
-                        }
-                        if (day > 31) // Probablemente yyyy está en la primera posición
-                        {
-                            (day, year) = (year, day);
-                        }
+                        if (year < 100) year += 2000;
+                        if (day > 31) (day, year) = (year, day);
 
                         var date = new DateTime(year, month, day);
                         return date.ToString("yyyy-MM-dd");
@@ -587,89 +973,37 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-
             return "";
         }
 
-        private string CleanVehicleBrand(string text)
+        private decimal ExtractAmountFromText(string text)
         {
-            if (string.IsNullOrEmpty(text)) return "";
+            if (string.IsNullOrEmpty(text)) return 0;
 
-            var match = Regex.Match(text, @"(?:MARCA\s*:?\s*)?([A-Z]+(?:\s+[A-Z]+)*)", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value.Trim() : text.Trim();
-        }
+            var match = Regex.Match(text, @"[\$\s]*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?)");
+            if (match.Success)
+            {
+                var amountStr = match.Groups[1].Value
+                    .Replace(".", "")  // Remover separadores de miles
+                    .Replace(",", "."); // Convertir coma decimal a punto
 
-        private string CleanClientName(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-
-            var match = Regex.Match(text, @"(?:Asegurado\s*:?\s*)?([A-Z\s]+(?:\s+S\.?A\.?)?)", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value.Trim() : text.Trim();
-        }
-
-        private string CleanBrokerName(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-
-            var match = Regex.Match(text, @"(?:Nombre\s*:?\s*)?([A-Z\s]+(?:\s+S\.?A\.?)?)", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value.Trim() : text.Trim();
-        }
-
-        private string CleanAlphanumeric(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-
-            return Regex.Replace(text, @"[^A-Z0-9]", "", RegexOptions.IgnoreCase).Trim();
-        }
-
-        private async Task LogMappingResults(CreatePolizaVelneoRequest request, Dictionary<string, object> originalData)
-        {
-            _logger.LogInformation("📊 Resultado del mapeo:");
-            _logger.LogInformation("  Póliza: {Policy}", request.conpol);
-            _logger.LogInformation("  Cliente ID: {ClientId}", request.clinro);
-            _logger.LogInformation("  Corredor ID: {BrokerId}", request.corrnom);
-            _logger.LogInformation("  Marca: {Brand}", request.conmaraut);
-            _logger.LogInformation("  Año: {Year}", request.conanioaut);
-            _logger.LogInformation("  Premio: {Premium}", request.conpremio);
-            _logger.LogInformation("  Campos originales procesados: {Count}", originalData.Count);
+                if (decimal.TryParse(amountStr, NumberStyles.Currency, CultureInfo.InvariantCulture, out var amount))
+                {
+                    return amount;
+                }
+            }
+            return 0;
         }
 
         #endregion
     }
 
-    #region DTO para Velneo Request
-
-    public class CreatePolizaVelneoRequest
+    /// <summary>
+    /// 🚨 Excepción para errores de validación
+    /// </summary>
+    public class ValidationException : Exception
     {
-        public int id { get; set; } = 0;
-        public string conpol { get; set; } = "";  // Número de póliza
-        public string conend { get; set; } = "0"; // Endoso
-        public string confchdes { get; set; } = ""; // Fecha desde
-        public string confchhas { get; set; } = ""; // Fecha hasta
-        public int conpremio { get; set; } = 0;   // Premio
-        public int contot { get; set; } = 0;      // Total
-        public string conmaraut { get; set; } = ""; // Marca
-        public string conmotor { get; set; } = "";  // Motor
-        public string conchasis { get; set; } = ""; // Chasis
-        public int conanioaut { get; set; } = 0;    // Año
-        public int clinro { get; set; } = 0;        // Cliente ID
-        public int corrnom { get; set; } = 0;       // Corredor ID
-        public int dptnom { get; set; } = 0;        // Departamento ID
-        public string combustibles { get; set; } = "1"; // Combustible código
-        public int desdsc { get; set; } = 0;        // Destino ID
-        public int catdsc { get; set; } = 0;        // Categoría ID
-        public int caldsc { get; set; } = 0;        // Calidad ID
-        public int tarcod { get; set; } = 0;        // Tarifa ID
-        public string consta { get; set; } = "1";   // Forma de pago
-        public int concuo { get; set; } = 1;        // Cuotas
-        public string congesti { get; set; } = "1"; // Estado gestión
-        public string contra { get; set; } = "1";   // Tramite
-        public string convig { get; set; } = "1";   // Vigencia
-        public int moncod { get; set; } = 858;      // Moneda (peso uruguayo)
-        public DateTime ingresado { get; set; } = DateTime.UtcNow;
-        public DateTime last_update { get; set; } = DateTime.UtcNow;
-        public int app_id { get; set; } = 0;        // Referencia al scan
+        public ValidationException(string message) : base(message) { }
+        public ValidationException(string message, Exception innerException) : base(message, innerException) { }
     }
-
-    #endregion
 }

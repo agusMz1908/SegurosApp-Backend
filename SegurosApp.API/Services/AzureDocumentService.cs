@@ -3,6 +3,7 @@ using Azure.AI.DocumentIntelligence;
 using Microsoft.EntityFrameworkCore;
 using SegurosApp.API.Data;
 using SegurosApp.API.DTOs;
+using SegurosApp.API.DTOs.Velneo;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Models;
 using System.Security.Cryptography;
@@ -29,7 +30,6 @@ namespace SegurosApp.API.Services
             _logger = logger;
             _fieldParser = fieldParser;
 
-            // DEBUG: Verificar configuración
             var endpoint = _configuration["AzureDocumentIntelligence:Endpoint"];
             var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
             var modelId = _configuration["AzureDocumentIntelligence:ModelId"];
@@ -39,11 +39,10 @@ namespace SegurosApp.API.Services
             _logger.LogInformation("🔧 ApiKey length: {Length}", apiKey?.Length ?? 0);
             _logger.LogInformation("🔧 ModelId: '{ModelId}'", modelId);
 
-            // Verificar que no sean placeholders
             if (string.IsNullOrEmpty(endpoint) || endpoint.Contains("PLACEHOLDER"))
             {
                 _logger.LogError("❌ Azure Endpoint es placeholder o vacío. Usando modo mock.");
-                _documentClient = null; // Indicar que no hay cliente válido
+                _documentClient = null; 
                 return;
             }
 
@@ -85,7 +84,6 @@ namespace SegurosApp.API.Services
                 _logger.LogInformation("📄 Procesando documento: {FileName} para usuario: {UserId}",
                     file.FileName, userId);
 
-                // Validaciones básicas
                 var validationResult = ValidateFile(file);
                 if (!validationResult.IsValid)
                 {
@@ -99,10 +97,7 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                // Calcular hash MD5 para detectar duplicados
                 var fileHash = await CalculateFileHashAsync(file);
-
-                // Verificar duplicados
                 var existingScan = await _context.DocumentScans
                     .Where(d => d.FileMd5Hash == fileHash && d.UserId == userId)
                     .FirstOrDefaultAsync();
@@ -132,11 +127,9 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                // Procesar con Azure Document Intelligence
                 var azureResult = await ProcessWithAzureAsync(file);
                 stopwatch.Stop();
 
-                // Guardar en base de datos
                 var documentScan = new DocumentScan
                 {
                     UserId = userId,
@@ -156,8 +149,6 @@ namespace SegurosApp.API.Services
 
                 _context.DocumentScans.Add(documentScan);
                 await _context.SaveChangesAsync();
-
-                // Actualizar métricas diarias
                 await UpdateDailyMetricsAsync(userId, startTime.Date, true, (int)stopwatch.ElapsedMilliseconds, azureResult.SuccessRate);
 
                 return new DocumentScanResponse
@@ -338,16 +329,12 @@ namespace SegurosApp.API.Services
             };
         }
 
-        // ===============================
-        // MÉTODOS PRIVADOS
-        // ===============================
-
         private (bool IsValid, string? ErrorMessage) ValidateFile(IFormFile file)
         {
             if (file == null || file.Length == 0)
                 return (false, "Archivo requerido");
 
-            if (file.Length > 10 * 1024 * 1024) // 10MB
+            if (file.Length > 10 * 1024 * 1024) 
                 return (false, "El archivo es demasiado grande (máximo 10MB)");
 
             if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
@@ -382,7 +369,6 @@ namespace SegurosApp.API.Services
 
             try
             {
-                // ✅ Método básico sin opciones
                 var operation = await _documentClient.AnalyzeDocumentAsync(
                     WaitUntil.Completed,
                     modelId,
@@ -409,7 +395,6 @@ namespace SegurosApp.API.Services
                 _logger.LogError("❌ Azure RequestFailedException: Status={Status}, ErrorCode={ErrorCode}, Message={Message}",
                     ex.Status, ex.ErrorCode, ex.Message);
 
-                // Log más detalles para debug
                 _logger.LogError("❌ Full exception: {Exception}", ex.ToString());
 
                 throw new InvalidOperationException($"Azure Document Intelligence error: {ex.Message}", ex);
@@ -463,7 +448,6 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // También extraer de key-value pairs si están disponibles
                 if (analyzeResult.KeyValuePairs != null)
                 {
                     _logger.LogInformation("📝 Extrayendo {Count} pares clave-valor", analyzeResult.KeyValuePairs.Count);
@@ -496,7 +480,6 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // Si hay tablas, extraerlas también
                 if (analyzeResult.Tables?.Count > 0)
                 {
                     _logger.LogInformation("📊 Encontradas {TableCount} tablas", analyzeResult.Tables.Count);
@@ -520,46 +503,20 @@ namespace SegurosApp.API.Services
             return extractedFields;
         }
 
-        private Dictionary<string, object> ParseContentForPolizaFields(string content)
-        {
-            var fields = new Dictionary<string, object>();
-
-            if (string.IsNullOrEmpty(content))
-                return fields;
-
-            try
-            {
-                // Crear un diccionario con el contenido para que el parser lo procese
-                var rawFields = new Dictionary<string, object>
-                {
-                    ["content"] = content
-                };
-
-                // Usar el parser existente
-                fields = _fieldParser.ProcessExtractedData(rawFields);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Error parseando contenido");
-            }
-
-            return fields;
-        }
-
         private Dictionary<string, object> ExtractTableData(IReadOnlyList<DocumentTable> tables)
         {
             var tableFields = new Dictionary<string, object>();
 
             try
             {
-                foreach (var table in tables.Take(3)) // Limitar a 3 tablas para evitar spam
+                foreach (var table in tables.Take(3)) 
                 {
                     _logger.LogInformation("📊 Procesando tabla con {Rows} filas y {Cols} columnas",
                         table.RowCount, table.ColumnCount);
 
-                    for (int row = 0; row < table.RowCount && row < 10; row++) // Max 10 filas
+                    for (int row = 0; row < table.RowCount && row < 10; row++) 
                     {
-                        for (int col = 0; col < table.ColumnCount && col < 5; col++) // Max 5 columnas
+                        for (int col = 0; col < table.ColumnCount && col < 5; col++) 
                         {
                             var cell = table.Cells.FirstOrDefault(c => c.RowIndex == row && c.ColumnIndex == col);
                             if (cell != null && !string.IsNullOrEmpty(cell.Content?.Trim()))
@@ -579,7 +536,6 @@ namespace SegurosApp.API.Services
             return tableFields;
         }
 
-        // ✅ CORREGIDO: Método simplificado para evitar errores de tipos
         private string ExtractFieldValue(DocumentField field)
         {
             try
@@ -587,15 +543,12 @@ namespace SegurosApp.API.Services
                 if (field == null)
                     return string.Empty;
 
-                // Usar Content como principal
                 if (!string.IsNullOrEmpty(field.Content))
                     return field.Content.Trim();
 
-                // Fallback a ValueString si Content está vacío
                 if (!string.IsNullOrEmpty(field.ValueString))
                     return field.ValueString.Trim();
 
-                // Otras propiedades de valor
                 if (field.ValueDouble.HasValue)
                     return field.ValueDouble.Value.ToString();
 
@@ -616,99 +569,6 @@ namespace SegurosApp.API.Services
                 return field?.Content ?? string.Empty;
             }
         }
-
-        private void ExtractFromKeyValuePairs(AnalyzeResult result, Dictionary<string, object> extractedFields,
-            ref int fieldsExtracted, ref int totalFieldsAttempted)
-        {
-            if (result.KeyValuePairs != null)
-            {
-                foreach (var kvp in result.KeyValuePairs)
-                {
-                    totalFieldsAttempted++;
-
-                    var key = kvp.Key?.Content?.Trim() ?? "";
-                    var value = kvp.Value?.Content?.Trim() ?? "";
-
-                    if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
-                    {
-                        var cleanKey = key.Replace(":", "").Replace(" ", "_").ToLowerInvariant();
-                        extractedFields[cleanKey] = value;
-                        fieldsExtracted++;
-                    }
-                }
-            }
-        }
-
-        private void ExtractFromTables(AnalyzeResult result, Dictionary<string, object> extractedFields,
-            ref int fieldsExtracted, ref int totalFieldsAttempted)
-        {
-            if (result.Tables != null)
-            {
-                foreach (var table in result.Tables)
-                {
-                    if (table.Cells != null)
-                    {
-                        for (int i = 0; i < table.Cells.Count - 1; i++)
-                        {
-                            var cell1 = table.Cells[i];
-                            var cell2 = table.Cells[i + 1];
-
-                            if (cell1.RowIndex == cell2.RowIndex &&
-                                cell1.ColumnIndex + 1 == cell2.ColumnIndex)
-                            {
-                                totalFieldsAttempted++;
-
-                                var key = cell1.Content?.Trim() ?? "";
-                                var value = cell2.Content?.Trim() ?? "";
-
-                                if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
-                                {
-                                    var cleanKey = key.Replace(":", "").Replace(" ", "_").ToLowerInvariant();
-                                    extractedFields[cleanKey] = value;
-                                    fieldsExtracted++;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        private Dictionary<string, object> MapFieldsToStandardNames(Dictionary<string, object> azureFields)
-        {
-            var mappedFields = new Dictionary<string, object>();
-
-            var fieldMappings = new Dictionary<string, string>
-            {
-                ["numero_poliza"] = "numeroPoliza",
-                ["poliza_numero"] = "numeroPoliza",
-                ["policy_number"] = "numeroPoliza",
-                ["asegurado_nombre"] = "asegurado",
-                ["cliente_nombre"] = "asegurado",
-                ["vehiculo_descripcion"] = "vehiculo",
-                ["vigencia_desde"] = "vigenciaDesde",
-                ["vigencia_hasta"] = "vigenciaHasta",
-                ["premio_total"] = "premio"
-            };
-
-            foreach (var azureField in azureFields)
-            {
-                var key = azureField.Key.ToLowerInvariant();
-                var mappedKey = fieldMappings.ContainsKey(key) ? fieldMappings[key] : azureField.Key;
-                mappedFields[mappedKey] = azureField.Value;
-            }
-
-            foreach (var azureField in azureFields)
-            {
-                if (!mappedFields.ContainsKey(azureField.Key))
-                {
-                    mappedFields[azureField.Key] = azureField.Value;
-                }
-            }
-
-            return mappedFields;
-        }
-
         private async Task UpdateDailyMetricsAsync(int userId, DateTime date, bool success, int processingTime, decimal successRate)
         {
             var metrics = await _context.DailyMetrics
@@ -754,6 +614,263 @@ namespace SegurosApp.API.Services
             }
 
             await _context.SaveChangesAsync();
+        }
+
+        public async Task UpdateScanWithVelneoInfoAsync(int scanId, string? velneoPolizaNumber, bool velneoCreated)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Actualizando scan {ScanId} con info Velneo: {PolizaNumber}, Creado: {Created}",
+                    scanId, velneoPolizaNumber, velneoCreated);
+
+                var scan = await _context.DocumentScans.FindAsync(scanId);
+                if (scan == null)
+                {
+                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para actualizar con Velneo", scanId);
+                    return;
+                }
+
+                scan.VelneoPolizaNumber = velneoPolizaNumber;
+                scan.VelneoCreated = velneoCreated;
+
+                if (velneoCreated && !scan.IsBilled)
+                {
+                    scan.IsBillable = true;
+                }
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("✅ Scan {ScanId} actualizado con info Velneo exitosamente", scanId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error actualizando scan {ScanId} con info Velneo", scanId);
+                throw;
+            }
+        }
+
+        public async Task<List<DocumentHistoryDto>> GetPendingVelneoScansAsync(int userId, int limit = 50)
+        {
+            try
+            {
+                _logger.LogInformation("🔍 Obteniendo escaneos pendientes Velneo para usuario {UserId}", userId);
+
+                var pendingScans = await _context.DocumentScans
+                    .Where(d => d.UserId == userId &&
+                               d.Status == "Completed" &&  
+                               !d.VelneoCreated &&         
+                               d.SuccessRate >= 70)       
+                    .OrderByDescending(d => d.CreatedAt)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var result = pendingScans.Select(MapToHistoryDto).ToList();
+
+                _logger.LogInformation("✅ Encontrados {Count} escaneos pendientes para Velneo", result.Count);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo escaneos pendientes Velneo para usuario {UserId}", userId);
+                return new List<DocumentHistoryDto>();
+            }
+        }
+
+        public async Task<VelneoIntegrationMetricsDto> GetVelneoIntegrationMetricsAsync(int userId, DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            try
+            {
+                fromDate ??= DateTime.UtcNow.AddDays(-30);
+                toDate ??= DateTime.UtcNow;
+
+                _logger.LogInformation("📊 Calculando métricas Velneo para usuario {UserId} desde {FromDate} hasta {ToDate}",
+                    userId, fromDate, toDate);
+
+                var scans = await _context.DocumentScans
+                    .Where(d => d.UserId == userId &&
+                               d.CreatedAt >= fromDate &&
+                               d.CreatedAt <= toDate &&
+                               d.Status == "Completed")
+                    .ToListAsync();
+
+                var metrics = new VelneoIntegrationMetricsDto
+                {
+                    TotalScans = scans.Count,
+                    SuccessfulScans = scans.Count(s => s.Status == "Completed"),
+                    PendingVelneoCreation = scans.Count(s => !s.VelneoCreated && s.IsBillable),
+                    VelneoCreatedSuccessfully = scans.Count(s => s.VelneoCreated),
+                    VelneoCreationFailed = scans.Count(s => !s.VelneoCreated && s.IsBillable && s.CreatedAt < DateTime.UtcNow.AddHours(-1)), 
+
+                    PeriodStart = fromDate.Value,
+                    PeriodEnd = toDate.Value,
+
+                    VelneoSuccessRate = scans.Count > 0 ?
+                        (decimal)scans.Count(s => s.VelneoCreated) / scans.Count * 100 : 0,
+
+                    ProcessingEfficiency = scans.Count > 0 ?
+                        (decimal)scans.Count(s => s.SuccessRate >= 80) / scans.Count * 100 : 0,
+
+                    AverageProcessingTimeMs = scans.Count > 0 ?
+                        (int)scans.Average(s => s.ProcessingTimeMs) : 0,
+
+                    AverageVelneoCreationTimeMs = 2000,
+
+                    DailyMetrics = await CalculateDailyVelneoMetricsAsync(userId, fromDate.Value, toDate.Value),
+
+                    ProblematicDocuments = await GetProblematicVelneoDocumentsAsync(userId, fromDate.Value, toDate.Value),
+
+                    Quality = await CalculateQualityMetricsAsync(scans)
+                };
+
+                _logger.LogInformation("✅ Métricas Velneo calculadas: {TotalScans} scans, {VelneoSuccessRate:F1}% éxito Velneo",
+                    metrics.TotalScans, metrics.VelneoSuccessRate);
+
+                return metrics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error calculando métricas Velneo para usuario {UserId}", userId);
+                return new VelneoIntegrationMetricsDto
+                {
+                    PeriodStart = fromDate ?? DateTime.UtcNow.AddDays(-30),
+                    PeriodEnd = toDate ?? DateTime.UtcNow
+                };
+            }
+        }
+        private async Task<List<DailyVelneoMetric>> CalculateDailyVelneoMetricsAsync(int userId, DateTime fromDate, DateTime toDate)
+        {
+            try
+            {
+                var dailyMetrics = new List<DailyVelneoMetric>();
+
+                for (var date = fromDate.Date; date <= toDate.Date; date = date.AddDays(1))
+                {
+                    var dayScans = await _context.DocumentScans
+                        .Where(d => d.UserId == userId &&
+                                   d.CreatedAt.Date == date &&
+                                   d.Status == "Completed")
+                        .ToListAsync();
+
+                    if (dayScans.Any())
+                    {
+                        var metric = new DailyVelneoMetric
+                        {
+                            Date = date,
+                            TotalScans = dayScans.Count,
+                            VelneoCreated = dayScans.Count(s => s.VelneoCreated),
+                            VelneoFailed = dayScans.Count(s => !s.VelneoCreated && s.IsBillable),
+                            PendingVelneo = dayScans.Count(s => !s.VelneoCreated && s.IsBillable),
+                            SuccessRate = dayScans.Count > 0 ?
+                                (decimal)dayScans.Count(s => s.VelneoCreated) / dayScans.Count * 100 : 0,
+                            AverageProcessingTimeMs = (int)dayScans.Average(s => s.ProcessingTimeMs)
+                        };
+
+                        dailyMetrics.Add(metric);
+                    }
+                }
+
+                return dailyMetrics.OrderBy(m => m.Date).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error calculando métricas diarias Velneo");
+                return new List<DailyVelneoMetric>();
+            }
+        }
+
+        private async Task<List<ProblematicVelneoDocumentDto>> GetProblematicVelneoDocumentsAsync(int userId, DateTime fromDate, DateTime toDate)
+        {
+            try
+            {
+                var problematicScans = await _context.DocumentScans
+                    .Where(d => d.UserId == userId &&
+                               d.CreatedAt >= fromDate &&
+                               d.CreatedAt <= toDate &&
+                               d.Status == "Completed" &&
+                               !d.VelneoCreated &&
+                               d.IsBillable &&
+                               d.CreatedAt < DateTime.UtcNow.AddHours(-1)) 
+                    .OrderByDescending(d => d.CreatedAt)
+                    .Take(20) 
+                    .ToListAsync();
+
+                return problematicScans.Select(scan => new ProblematicVelneoDocumentDto
+                {
+                    ScanId = scan.Id,
+                    FileName = scan.FileName,
+                    CreatedAt = scan.CreatedAt,
+                    ErrorType = "VelneoCreationPending",
+                    ErrorMessage = "Documento no enviado a Velneo después de procesamiento exitoso",
+                    RetryCount = 0, 
+                    Status = "PendingVelneo",
+
+                    HasClienteId = false, 
+                    HasCompaniaId = false,
+                    HasSeccionId = false,
+                    HasPolicyNumber = !string.IsNullOrEmpty(GetPolicyNumberFromExtractedData(scan.ExtractedData)),
+                    DataCompleteness = scan.SuccessRate
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo documentos problemáticos Velneo");
+                return new List<ProblematicVelneoDocumentDto>();
+            }
+        }
+
+        private async Task<QualityMetrics> CalculateQualityMetricsAsync(List<DocumentScan> scans)
+        {
+            try
+            {
+                var qualityMetrics = new QualityMetrics
+                {
+                    AverageDataCompleteness = scans.Count > 0 ? scans.Average(s => s.SuccessRate) : 0,
+                    AverageMappingConfidence = scans.Count > 0 ? scans.Average(s => s.SuccessRate) : 0,
+                    DocumentsRequiringManualReview = scans.Count(s => s.SuccessRate < 70),
+                    AutoProcessedDocuments = scans.Count(s => s.SuccessRate >= 80),
+
+                    ProblematicFields = new List<FieldQualityMetric>(),
+                    BestPerformingFields = new List<FieldQualityMetric>()
+                };
+
+                return qualityMetrics;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error calculando métricas de calidad");
+                return new QualityMetrics();
+            }
+        }
+
+        private string GetPolicyNumberFromExtractedData(string extractedDataJson)
+        {
+            try
+            {
+                var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(extractedDataJson);
+                if (data == null) return "";
+
+                // Buscar en varios campos posibles
+                var possibleFields = new[] { "poliza.numero", "numeroPoliza", "datos_poliza" };
+
+                foreach (var field in possibleFields)
+                {
+                    if (data.TryGetValue(field, out var value) && value != null)
+                    {
+                        var text = value.ToString() ?? "";
+                        var match = System.Text.RegularExpressions.Regex.Match(text, @"(\d{7,9})");
+                        if (match.Success)
+                        {
+                            return match.Groups[1].Value;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("⚠️ Error extrayendo número de póliza de datos guardados: {Error}", ex.Message);
+            }
+
+            return "";
         }
 
     }

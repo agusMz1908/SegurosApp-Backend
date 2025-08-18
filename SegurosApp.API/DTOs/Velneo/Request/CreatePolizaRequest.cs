@@ -6,6 +6,7 @@
         public int ClientId { get; set; }
         public int BrokerId { get; set; }
         public int CompanyId { get; set; }
+        public int SectionId { get; set; } 
         public int DepartmentId { get; set; }
         public string FuelId { get; set; } = "";
         public int DestinationId { get; set; }

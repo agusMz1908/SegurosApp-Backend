@@ -52,8 +52,6 @@ namespace SegurosApp.API.Services
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                     var combustibles = velneoResponse?.combustibles ?? new List<CombustibleItem>();
-
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, combustibles, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Combustibles obtenidos: {Count}", combustibles.Count);
@@ -92,7 +90,6 @@ namespace SegurosApp.API.Services
 
                     var departamentos = velneoResponse?.departamentos ?? new List<DepartamentoItem>();
 
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, departamentos, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Departamentos obtenidos: {Count}", departamentos.Count);
@@ -131,7 +128,6 @@ namespace SegurosApp.API.Services
 
                     var corredores = velneoResponse?.corredores ?? new List<CorredorItem>();
 
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, corredores, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Corredores obtenidos: {Count}", corredores.Count);
@@ -170,7 +166,6 @@ namespace SegurosApp.API.Services
 
                     var categorias = velneoResponse?.categorias ?? new List<CategoriaItem>();
 
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, categorias, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Categorías obtenidas: {Count}", categorias.Count);
@@ -209,7 +204,6 @@ namespace SegurosApp.API.Services
 
                     var destinos = velneoResponse?.destinos ?? new List<DestinoItem>();
 
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, destinos, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Destinos obtenidos: {Count}", destinos.Count);
@@ -248,7 +242,6 @@ namespace SegurosApp.API.Services
 
                     var calidades = velneoResponse?.calidades ?? new List<CalidadItem>();
 
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, calidades, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Calidades obtenidas: {Count}", calidades.Count);
@@ -287,7 +280,6 @@ namespace SegurosApp.API.Services
 
                     var tarifas = velneoResponse?.tarifas ?? new List<TarifaItem>();
 
-                    // Cache por 2 horas
                     _cache.Set(cacheKey, tarifas, TimeSpan.FromHours(2));
 
                     _logger.LogInformation("✅ Tarifas obtenidas: {Count}", tarifas.Count);
@@ -317,7 +309,6 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("🏢 Obteniendo compañías desde Velneo...");
 
-                // ✅ LLAMADA REAL A VELNEO - Endpoint que funciona
                 var url = $"{BaseUrl}/companias?api_key={ApiKey}";
                 var response = await _httpClient.GetAsync(url);
 
@@ -332,13 +323,11 @@ namespace SegurosApp.API.Services
 
                     if (velneoResponse?.companias != null)
                     {
-                        // ✅ FILTRAR SOLO COMPAÑÍAS ACTIVAS (que tienen nombre)
                         var companiasActivas = velneoResponse.companias
                             .Where(c => c.IsActive)
                             .OrderBy(c => c.DisplayName)
                             .ToList();
 
-                        // Cache por 4 horas (datos maestros cambian poco)
                         _cache.Set(cacheKey, companiasActivas, TimeSpan.FromHours(4));
 
                         _logger.LogInformation("✅ Compañías obtenidas desde Velneo: {Count}/{Total} activas",
@@ -373,9 +362,6 @@ namespace SegurosApp.API.Services
             return new List<CompaniaItem>();
         }
 
-        /// <summary>
-        /// 📋 Obtener secciones reales desde API Velneo
-        /// </summary>
         public async Task<List<SeccionItem>> GetSeccionesAsync(int? companiaId = null)
         {
             var cacheKey = companiaId.HasValue
@@ -390,7 +376,6 @@ namespace SegurosApp.API.Services
                 _logger.LogInformation("📋 Obteniendo secciones desde Velneo (compañía: {CompaniaId})...",
                     companiaId?.ToString() ?? "todas");
 
-                // Nota: Por ahora todas las secciones, luego se puede filtrar por compañía
                 var url = $"{BaseUrl}/secciones?api_key={ApiKey}";
                 var response = await _httpClient.GetAsync(url);
 
@@ -405,16 +390,11 @@ namespace SegurosApp.API.Services
 
                     if (velneoResponse?.secciones != null)
                     {
-                        // ✅ FILTRAR SOLO SECCIONES ACTIVAS
                         var seccionesActivas = velneoResponse.secciones
                             .Where(s => s.IsActive)
                             .OrderBy(s => s.DisplayName)
                             .ToList();
 
-                        // TODO: Cuando Velneo implemente filtro por compañía, usar companiaId
-                        // Por ahora devolvemos todas las secciones activas
-
-                        // Cache por 4 horas
                         _cache.Set(cacheKey, seccionesActivas, TimeSpan.FromHours(4));
 
                         _logger.LogInformation("✅ Secciones obtenidas desde Velneo: {Count}/{Total} activas",
@@ -846,7 +826,6 @@ namespace SegurosApp.API.Services
                     Companias = await companiasTask,
                     Secciones = await seccionesTask,
 
-                    // Datos estáticos
                     EstadosGestion = GetEstadosGestion(),
                     Tramites = GetTramites(),
                     EstadosPoliza = GetEstadosPoliza(),
@@ -1008,7 +987,7 @@ namespace SegurosApp.API.Services
                     Id = getId(item),
                     Similarity = CalculateSimilarity(scannedValue, getName(item))
                 })
-                .Where(x => x.Similarity >= 0.6) // Mínimo 60% similitud
+                .Where(x => x.Similarity >= 0.6) 
                 .OrderByDescending(x => x.Similarity)
                 .FirstOrDefault();
 
@@ -1084,7 +1063,6 @@ namespace SegurosApp.API.Services
             if (text1 == text2) return 1.0;
             if (text2.Contains(text1) || text1.Contains(text2)) return 0.85;
 
-            // Algoritmo de Levenshtein simplificado
             var distance = ComputeLevenshteinDistance(text1, text2);
             var maxLength = Math.Max(text1.Length, text2.Length);
 
@@ -1120,42 +1098,263 @@ namespace SegurosApp.API.Services
 
         public Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue)
         {
-            // TODO: Implementar cuando tengamos la tabla UserFieldMappings
             _logger.LogInformation("💾 Guardando mapeo: {FieldName} {ScannedValue} -> {VelneoValue}",
                 fieldName, scannedValue, velneoValue);
             return Task.CompletedTask;
         }
 
-        public async Task<CreatePolizaResponse> CreatePolizaAsync(CreatePolizaRequest request)
+        public async Task<CreatePolizaResponse> CreatePolizaAsync(VelneoPolizaRequest request)
         {
             try
             {
-                _logger.LogInformation("🚀 Creando póliza en Velneo para scan {ScanId}", request.ScanId);
+                _logger.LogInformation("🚀 Creando póliza en Velneo: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                    request.conpol, request.clinro, request.comcod, request.seccod);
 
-                // TODO: Implementar el POST a Velneo cuando tengamos el mapper completo
-                // var velneoContrato = MapToVelneoContrato(request);
-                // var response = await PostToVelneo(velneoContrato);
+                ValidateVelneoPolizaRequest(request);
 
-                await Task.Delay(100); // Simular llamada por ahora
+                var velneoPayload = MapToVelneoApiFormat(request);
 
+                var url = $"{BaseUrl}/polizas?api_key={ApiKey}";
+
+                var jsonPayload = JsonSerializer.Serialize(velneoPayload, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    WriteIndented = true
+                });
+
+                _logger.LogDebug("📤 Enviando a Velneo: {Url}", url);
+                _logger.LogDebug("📦 Payload: {Payload}", jsonPayload);
+
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(url, content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseJson = await response.Content.ReadAsStringAsync();
+                    _logger.LogDebug("📥 Respuesta Velneo: {Response}", responseJson);
+                    var velneoResponse = ParseVelneoResponse(responseJson);
+
+                    _logger.LogInformation("✅ Póliza creada exitosamente en Velneo: ID={VelneoId}, Número={PolicyNumber}",
+                        velneoResponse.VelneoPolizaId, velneoResponse.PolizaNumber);
+
+                    return new CreatePolizaResponse
+                    {
+                        Success = true,
+                        Message = "Póliza creada exitosamente en Velneo",
+                        VelneoPolizaId = velneoResponse.VelneoPolizaId,
+                        PolizaNumber = velneoResponse.PolizaNumber,
+                        CreatedAt = DateTime.UtcNow,
+                        VelneoUrl = GenerateVelneoUrl(velneoResponse.VelneoPolizaId),
+                        Validation = new ValidationResult
+                        {
+                            IsValid = true,
+                            FieldsValidated = GetValidatedFields(request)
+                        }
+                    };
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en Velneo API: {StatusCode} - {Error}", response.StatusCode, errorContent);
+
+                    return new CreatePolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Error en Velneo: {response.StatusCode}",
+                        Validation = new ValidationResult
+                        {
+                            IsValid = false,
+                            Errors = new List<string> { $"Velneo API Error: {errorContent}" }
+                        }
+                    };
+                }
+            }
+            catch (ValidationException ex)
+            {
+                _logger.LogError(ex, "❌ Error de validación creando póliza en Velneo");
                 return new CreatePolizaResponse
                 {
-                    Success = true,
-                    Message = "Póliza creada exitosamente",
-                    PolizaId = 7651, // Mock
-                    PolizaNumber = "12345678",
-                    CreatedAt = DateTime.UtcNow
+                    Success = false,
+                    Message = $"Error de validación: {ex.Message}",
+                    Validation = new ValidationResult
+                    {
+                        IsValid = false,
+                        Errors = new List<string> { ex.Message }
+                    }
+                };
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ Error de conectividad con Velneo");
+                return new CreatePolizaResponse
+                {
+                    Success = false,
+                    Message = "Error de conectividad con Velneo",
+                    Validation = new ValidationResult
+                    {
+                        IsValid = false,
+                        Errors = new List<string> { "No se pudo conectar con el servicio Velneo" }
+                    }
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error creando póliza para scan {ScanId}", request.ScanId);
+                _logger.LogError(ex, "❌ Error inesperado creando póliza en Velneo");
                 return new CreatePolizaResponse
                 {
                     Success = false,
-                    Message = $"Error creando póliza: {ex.Message}"
+                    Message = $"Error inesperado: {ex.Message}",
+                    Validation = new ValidationResult
+                    {
+                        IsValid = false,
+                        Errors = new List<string> { ex.Message }
+                    }
                 };
             }
+        }
+
+        private void ValidateVelneoPolizaRequest(VelneoPolizaRequest request)
+        {
+            var errors = new List<string>();
+
+            if (request.clinro <= 0)
+                errors.Add("Cliente ID es requerido y debe ser mayor a 0");
+
+            if (request.comcod <= 0)
+                errors.Add("Compañía ID es requerido y debe ser mayor a 0");
+
+            if (request.seccod <= 0)
+                errors.Add("Sección ID es requerido y debe ser mayor a 0");
+
+            if (string.IsNullOrWhiteSpace(request.conpol))
+                errors.Add("Número de póliza es requerido");
+            else if (request.conpol.Length < 6)
+                errors.Add("Número de póliza debe tener al menos 6 caracteres");
+
+            if (string.IsNullOrWhiteSpace(request.confchdes))
+                errors.Add("Fecha de inicio es requerida");
+
+            if (string.IsNullOrWhiteSpace(request.confchhas))
+                errors.Add("Fecha de fin es requerida");
+
+            if (!string.IsNullOrWhiteSpace(request.confchdes) && !DateTime.TryParse(request.confchdes, out _))
+                errors.Add("Fecha de inicio tiene formato inválido");
+
+            if (!string.IsNullOrWhiteSpace(request.confchhas) && !DateTime.TryParse(request.confchhas, out _))
+                errors.Add("Fecha de fin tiene formato inválido");
+
+            if (DateTime.TryParse(request.confchdes, out var startDate) &&
+                DateTime.TryParse(request.confchhas, out var endDate))
+            {
+                if (endDate <= startDate)
+                    errors.Add("Fecha de fin debe ser posterior a fecha de inicio");
+            }
+
+            if (request.conpremio < 0)
+                errors.Add("Premio no puede ser negativo");
+
+            if (request.contot < 0)
+                errors.Add("Total no puede ser negativo");
+
+            if (errors.Any())
+            {
+                var errorMessage = string.Join("; ", errors);
+                throw new ValidationException($"Errores de validación: {errorMessage}");
+            }
+        }
+        private object MapToVelneoApiFormat(VelneoPolizaRequest request)
+        {
+            return new
+            {
+                cliente_id = request.clinro,
+                compania_id = request.comcod,
+                seccion_id = request.seccod,
+
+                numero_poliza = request.conpol,
+                endoso = request.conend,
+                fecha_desde = request.confchdes,
+                fecha_hasta = request.confchhas,
+                premio = request.conpremio,
+                total = request.contot,
+
+                marca_vehiculo = request.conmaraut,
+                modelo_vehiculo = request.conmodaut,
+                ano_vehiculo = request.conanioaut,
+                motor = request.conmotor,
+                chasis = request.conchasis,
+
+                departamento_id = request.dptnom,
+                combustible_codigo = request.combustibles,
+                destino_id = request.desdsc,
+                categoria_id = request.catdsc,
+                calidad_id = request.caldsc,
+                tarifa_id = request.tarcod,
+
+                forma_pago = request.consta,
+                cantidad_cuotas = request.concuo,
+
+                estado_gestion = request.congesti,
+                tramite = request.contra,
+                vigencia = request.convig,
+                moneda_codigo = request.moncod,
+
+                fecha_ingreso = request.ingresado.ToString("yyyy-MM-dd HH:mm:ss"),
+                ultima_actualizacion = request.last_update.ToString("yyyy-MM-dd HH:mm:ss"),
+                aplicacion_id = request.app_id,
+                observaciones = request.observaciones
+            };
+        }
+
+        private VelneoCreateResponse ParseVelneoResponse(string responseJson)
+        {
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(responseJson);
+                var root = jsonDoc.RootElement;
+
+                return new VelneoCreateResponse
+                {
+                    VelneoPolizaId = root.TryGetProperty("id", out var idProp) ? idProp.GetInt32() : null,
+                    PolizaNumber = root.TryGetProperty("numero_poliza", out var numProp) ? numProp.GetString() : "",
+                    Success = root.TryGetProperty("success", out var successProp) ? successProp.GetBoolean() : true
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("⚠️ Error parseando respuesta Velneo: {Error}", ex.Message);
+                return new VelneoCreateResponse
+                {
+                    Success = true,
+                    PolizaNumber = "UNKNOWN"
+                };
+            }
+        }
+
+        private string? GenerateVelneoUrl(int? polizaId)
+        {
+            if (!polizaId.HasValue) return null;
+            return $"{BaseUrl}/polizas/{polizaId}";
+        }
+        private List<string> GetValidatedFields(VelneoPolizaRequest request)
+        {
+            var fields = new List<string>();
+
+            if (request.clinro > 0) fields.Add("cliente_id");
+            if (request.comcod > 0) fields.Add("compania_id");
+            if (request.seccod > 0) fields.Add("seccion_id");
+            if (!string.IsNullOrEmpty(request.conpol)) fields.Add("numero_poliza");
+            if (!string.IsNullOrEmpty(request.confchdes)) fields.Add("fecha_desde");
+            if (!string.IsNullOrEmpty(request.confchhas)) fields.Add("fecha_hasta");
+            if (request.conpremio > 0) fields.Add("premio");
+            if (!string.IsNullOrEmpty(request.conmaraut)) fields.Add("marca_vehiculo");
+
+            return fields;
+        }
+        private class VelneoCreateResponse
+        {
+            public int? VelneoPolizaId { get; set; }
+            public string PolizaNumber { get; set; } = "";
+            public bool Success { get; set; }
         }
     }
 }

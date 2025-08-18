@@ -1,4 +1,6 @@
-﻿namespace SegurosApp.API.DTOs.Velneo.Response
+﻿using SegurosApp.API.DTOs.SegurosApp.API.DTOs;
+
+namespace SegurosApp.API.DTOs.Velneo.Response
 {
     public class PolizaMappingResponse
     {
@@ -66,17 +68,6 @@
         public string Value { get; set; } = "";
         public string Label { get; set; } = "";
         public double Confidence { get; set; } = 0.0;
-    }
-
-    public class MappingMetrics
-    {
-        public int TotalFieldsScanned { get; set; } = 0;
-        public int FieldsMappedSuccessfully { get; set; } = 0;
-        public int FieldsWithIssues { get; set; } = 0;
-        public int FieldsRequireAttention { get; set; } = 0;
-        public decimal OverallConfidence { get; set; } = 0.0M;
-        public string MappingQuality { get; set; } = ""; 
-        public List<string> MissingCriticalFields { get; set; } = new();
     }
 
     public class FormData

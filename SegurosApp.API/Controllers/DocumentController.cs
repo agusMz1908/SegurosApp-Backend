@@ -1,6 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SegurosApp.API.DTOs;
+using SegurosApp.API.DTOs.Velneo.Item;
+using SegurosApp.API.DTOs.Velneo.Response;
+using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Services;
 using System.Security.Claims;
@@ -14,16 +17,403 @@ namespace SegurosApp.API.Controllers
     {
         private readonly IAzureDocumentService _azureDocumentService;
         private readonly IVelneoMasterDataService _masterDataService;
+        private readonly PolizaMapperService _polizaMapperService;
         private readonly ILogger<DocumentController> _logger;
 
         public DocumentController(
             IAzureDocumentService azureDocumentService,
             IVelneoMasterDataService masterDataService,
+            PolizaMapperService polizaMapperService,
             ILogger<DocumentController> logger)
         {
             _azureDocumentService = azureDocumentService;
             _masterDataService = masterDataService;
+            _polizaMapperService = polizaMapperService;
             _logger = logger;
+        }
+
+        [HttpPost("upload-with-context")]
+        [ProducesResponseType(typeof(DocumentScanWithContextResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<DocumentScanWithContextResponse>> UploadDocumentWithContext(
+            IFormFile file,
+            [FromForm] int clienteId,
+            [FromForm] int companiaId,
+            [FromForm] int seccionId,
+            [FromForm] string? notes = null)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new DocumentScanWithContextResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Archivo requerido"
+                    });
+                }
+
+                // ✅ VALIDAR PRE-SELECCIÓN
+                if (clienteId <= 0 || companiaId <= 0 || seccionId <= 0)
+                {
+                    return BadRequest(new DocumentScanWithContextResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Debe seleccionar Cliente, Compañía y Sección antes de escanear"
+                    });
+                }
+
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return Unauthorized(new DocumentScanWithContextResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Usuario no autenticado"
+                    });
+                }
+
+                _logger.LogInformation("📄 Upload con contexto iniciado: {FileName} - Cliente:{ClienteId}, Compañía:{CompaniaId}, Sección:{SeccionId}",
+                    file.FileName, clienteId, companiaId, seccionId);
+
+                // ✅ PASO 1: VALIDAR QUE EXISTAN LOS IDs EN VELNEO
+                var validationResult = await ValidatePreSelectionAsync(clienteId, companiaId, seccionId);
+                if (!validationResult.IsValid)
+                {
+                    return BadRequest(new DocumentScanWithContextResponse
+                    {
+                        Success = false,
+                        ErrorMessage = validationResult.ErrorMessage,
+                        ValidationErrors = validationResult.Errors
+                    });
+                }
+
+                // ✅ PASO 2: PROCESAR DOCUMENTO CON AZURE
+                var scanResult = await _azureDocumentService.ProcessDocumentAsync(file, userId.Value);
+                if (!scanResult.Success)
+                {
+                    return BadRequest(new DocumentScanWithContextResponse
+                    {
+                        Success = false,
+                        ErrorMessage = scanResult.ErrorMessage,
+                        ScanResult = scanResult
+                    });
+                }
+
+                // ✅ PASO 3: MAPEAR A PÓLIZA CON CONTEXTO
+                var polizaMapping = await _polizaMapperService.MapToPolizaWithContextAsync(
+                    scanResult.ExtractedData,
+                    new PreSelectionContext
+                    {
+                        ClienteId = clienteId,
+                        CompaniaId = companiaId,
+                        SeccionId = seccionId,
+                        ScanId = scanResult.ScanId,
+                        UserId = userId.Value,
+                        Notes = notes
+                    }
+                );
+
+                // ✅ PASO 4: RESPUESTA COMPLETA
+                var response = new DocumentScanWithContextResponse
+                {
+                    Success = true,
+                    ScanResult = scanResult,
+                    PreSelection = validationResult.ValidatedData!,
+                    PolizaMapping = polizaMapping,
+                    IsReadyForVelneo = polizaMapping.IsComplete,
+                    Message = polizaMapping.IsComplete
+                        ? "Documento procesado y mapeado exitosamente - Listo para enviar a Velneo"
+                        : "Documento procesado - Requiere revisión manual antes de enviar"
+                };
+
+                _logger.LogInformation("✅ Upload con contexto completado: {ScanId} - Listo para Velneo: {IsReady}",
+                    scanResult.ScanId, response.IsReadyForVelneo);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error en upload con contexto: {FileName}", file?.FileName ?? "unknown");
+                return StatusCode(500, new DocumentScanWithContextResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Error interno del servidor",
+                    ScanResult = new DocumentScanResponse { FileName = file?.FileName ?? "unknown" }
+                });
+            }
+        }
+
+        private async Task<PreSelectionValidationResult> ValidatePreSelectionAsync(
+            int clienteId, int companiaId, int seccionId)
+        {
+            try
+            {
+                _logger.LogInformation("🔍 Validando pre-selección: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                    clienteId, companiaId, seccionId);
+
+                var validationErrors = new List<string>();
+                ClienteItem? cliente = null;
+                CompaniaItem? compania = null;
+                SeccionItem? seccion = null;
+
+                try
+                {
+                    cliente = await _masterDataService.GetClienteDetalleAsync(clienteId);
+                    if (cliente == null)
+                    {
+                        validationErrors.Add($"Cliente con ID {clienteId} no encontrado en Velneo");
+                        _logger.LogWarning("❌ Cliente {ClienteId} no encontrado", clienteId);
+                    }
+                    else if (!cliente.activo)
+                    {
+                        validationErrors.Add($"Cliente '{cliente.DisplayName}' está marcado como inactivo");
+                        _logger.LogWarning("⚠️ Cliente {ClienteId} está inactivo", clienteId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Cliente validado: {ClienteId} - {DisplayName}",
+                            clienteId, cliente.DisplayName);
+                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    validationErrors.Add("Error de conectividad validando cliente - Servicio Velneo no disponible");
+                    _logger.LogError(ex, "❌ Error de conectividad validando cliente {ClienteId}", clienteId);
+                }
+                catch (Exception ex)
+                {
+                    validationErrors.Add($"Error inesperado validando cliente: {ex.Message}");
+                    _logger.LogError(ex, "❌ Error inesperado validando cliente {ClienteId}", clienteId);
+                }
+
+                try
+                {
+                    var companias = await _masterDataService.GetCompaniasAsync();
+                    compania = companias.FirstOrDefault(c => c.id == companiaId);
+
+                    if (compania == null)
+                    {
+                        validationErrors.Add($"Compañía con ID {companiaId} no encontrada en Velneo");
+                        _logger.LogWarning("❌ Compañía {CompaniaId} no encontrada", companiaId);
+                    }
+                    else if (!compania.IsActive)
+                    {
+                        validationErrors.Add($"Compañía '{compania.DisplayName}' está marcada como inactiva");
+                        _logger.LogWarning("⚠️ Compañía {CompaniaId} está inactiva", companiaId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Compañía validada: {CompaniaId} - {DisplayName}",
+                            companiaId, compania.DisplayName);
+                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    validationErrors.Add("Error de conectividad validando compañía - Servicio Velneo no disponible");
+                    _logger.LogError(ex, "❌ Error de conectividad validando compañía {CompaniaId}", companiaId);
+                }
+                catch (Exception ex)
+                {
+                    validationErrors.Add($"Error inesperado validando compañía: {ex.Message}");
+                    _logger.LogError(ex, "❌ Error inesperado validando compañía {CompaniaId}", companiaId);
+                }
+
+                try
+                {
+                    var secciones = await _masterDataService.GetSeccionesAsync(); 
+                    seccion = secciones.FirstOrDefault(s => s.id == seccionId);
+
+                    if (seccion == null)
+                    {
+                        validationErrors.Add($"Sección con ID {seccionId} no encontrada en Velneo");
+                        _logger.LogWarning("❌ Sección {SeccionId} no encontrada", seccionId);
+
+                        if (secciones.Any())
+                        {
+                            var seccionesDisponibles = string.Join(", ", secciones.Take(5).Select(s => $"{s.id}:{s.DisplayName}"));
+                            validationErrors.Add($"Secciones disponibles: {seccionesDisponibles}");
+                        }
+                        else
+                        {
+                            validationErrors.Add("No hay secciones disponibles en el sistema");
+                        }
+                    }
+                    else if (!seccion.IsActive)
+                    {
+                        validationErrors.Add($"Sección '{seccion.DisplayName}' está marcada como inactiva");
+                        _logger.LogWarning("⚠️ Sección {SeccionId} está inactiva", seccionId);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Sección validada: {SeccionId} - {DisplayName}",
+                            seccionId, seccion.DisplayName);
+                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    validationErrors.Add("Error de conectividad validando sección - Servicio Velneo no disponible");
+                    _logger.LogError(ex, "❌ Error de conectividad validando sección {SeccionId}", seccionId);
+                }
+                catch (Exception ex)
+                {
+                    validationErrors.Add($"Error inesperado validando sección: {ex.Message}");
+                    _logger.LogError(ex, "❌ Error inesperado validando sección {SeccionId}", seccionId);
+                }
+
+                if (cliente != null && compania != null && seccion != null)
+                {
+                    _logger.LogDebug("🔍 Validaciones lógicas: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId} - Todos válidos e independientes",
+                        clienteId, companiaId, seccionId);
+                }
+
+                if (validationErrors.Any())
+                {
+                    var errorMessage = string.Join("; ", validationErrors);
+                    _logger.LogWarning("❌ Validación falló: {ErrorCount} errores - {Errors}",
+                        validationErrors.Count, errorMessage);
+
+                    return new PreSelectionValidationResult
+                    {
+                        IsValid = false,
+                        ErrorMessage = $"Errores de validación: {errorMessage}",
+                        Errors = validationErrors,
+                        ValidatedData = null
+                    };
+                }
+
+                var validatedData = new ValidatedPreSelection
+                {
+                    Cliente = cliente!,
+                    Compania = compania!,
+                    Seccion = seccion!
+                };
+
+                _logger.LogInformation("✅ Pre-selección validada exitosamente: Cliente='{ClienteName}', Compañía='{CompaniaName}', Sección='{SeccionName}'",
+                    validatedData.ClienteDisplayName, validatedData.CompaniaDisplayName, validatedData.SeccionDisplayName);
+
+                return new PreSelectionValidationResult
+                {
+                    IsValid = true,
+                    ErrorMessage = string.Empty,
+                    Errors = new List<string>(),
+                    ValidatedData = validatedData
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error crítico en validación de pre-selección");
+
+                return new PreSelectionValidationResult
+                {
+                    IsValid = false,
+                    ErrorMessage = $"Error crítico en validación: {ex.Message}",
+                    Errors = new List<string> { $"Error crítico: {ex.Message}" },
+                    ValidatedData = null
+                };
+            }
+        }
+
+        private async Task<ValidationStatsDto> GetValidationStatsAsync(int userId, DateTime fromDate, DateTime toDate)
+        {
+            try
+            {
+                return new ValidationStatsDto
+                {
+                    TotalValidations = 0,
+                    SuccessfulValidations = 0,
+                    FailedValidations = 0,
+                    ClienteValidationFailures = 0,
+                    CompaniaValidationFailures = 0,
+                    SeccionValidationFailures = 0,
+                    ConnectivityIssues = 0,
+                    AverageValidationTimeMs = 0
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo estadísticas de validación");
+                return new ValidationStatsDto();
+            }
+        }
+
+        /// <summary>
+        /// 🚀 NUEVO: Crear póliza en Velneo con datos completos
+        /// </summary>
+        [HttpPost("{scanId}/create-in-velneo")]
+        [ProducesResponseType(typeof(CreatePolizaVelneoResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<CreatePolizaVelneoResponse>> CreatePolizaInVelneo(
+            int scanId,
+            [FromBody] CreatePolizaVelneoRequest? overrides = null)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return Unauthorized(new CreatePolizaVelneoResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Usuario no autenticado"
+                    });
+                }
+
+                _logger.LogInformation("🚀 Creando póliza en Velneo para scan {ScanId}", scanId);
+
+                // ✅ OBTENER DATOS DEL ESCANEO
+                var scanData = await _azureDocumentService.GetScanByIdAsync(scanId, userId.Value);
+                if (scanData == null)
+                {
+                    return NotFound(new CreatePolizaVelneoResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Documento escaneado no encontrado"
+                    });
+                }
+
+                // ✅ CREAR REQUEST PARA VELNEO
+                var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value, overrides);
+
+                // ✅ ENVIAR A VELNEO
+                var velneoResult = await _masterDataService.CreatePolizaAsync(velneoRequest);
+
+                if (velneoResult.Success)
+                {
+                    // ✅ ACTUALIZAR SCAN CON REFERENCIA VELNEO
+                    await _azureDocumentService.UpdateScanWithVelneoInfoAsync(
+                        scanId,
+                        velneoResult.VelneoPolizaId?.ToString(),
+                        true);
+
+                    _logger.LogInformation("✅ Póliza creada exitosamente en Velneo: ScanId={ScanId}, VelneoId={VelneoId}",
+                        scanId, velneoResult.VelneoPolizaId);
+                }
+
+                return Ok(new CreatePolizaVelneoResponse
+                {
+                    Success = velneoResult.Success,
+                    Message = velneoResult.Message,
+                    ScanId = scanId,
+                    VelneoPolizaId = velneoResult.VelneoPolizaId,
+                    PolizaNumber = velneoResult.PolizaNumber,
+                    CreatedAt = velneoResult.CreatedAt,
+                    Warnings = velneoResult.Warnings,
+                    Validation = velneoResult.Validation
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error creando póliza en Velneo para scan {ScanId}", scanId);
+                return StatusCode(500, new CreatePolizaVelneoResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Error interno del servidor"
+                });
+            }
         }
 
         [HttpPost("upload")]

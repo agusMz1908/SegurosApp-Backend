@@ -36,7 +36,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
 
-        // ✅ AGREGAR ESTOS EVENTOS PARA DEBUG
         options.Events = new JwtBearerEvents
         {
             OnTokenValidated = context =>
@@ -69,16 +68,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// ✅ AGREGAR MEMORY CACHE - ESTO FALTABA
 builder.Services.AddMemoryCache();
 
-// ✅ Servicios principales
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAzureDocumentService, AzureDocumentService>();
 builder.Services.AddScoped<IVelneoMasterDataService, VelneoMasterDataService>();
 builder.Services.AddScoped<DocumentFieldParser>();
+builder.Services.AddScoped<PolizaMapperService>();
 
-// ✅ HttpClient para VelneoMasterDataService
 builder.Services.AddHttpClient<VelneoMasterDataService>();
 
 builder.Services.AddControllers();

@@ -17,7 +17,7 @@ namespace SegurosApp.API.Interfaces
         Task<CompleteMasterDataResponse> GetAllMasterDataAsync();
         Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue);
         Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue);
-        Task<CreatePolizaResponse> CreatePolizaAsync(CreatePolizaRequest request);
+        Task<CreatePolizaResponse> CreatePolizaAsync(VelneoPolizaRequest request);
         Task<List<ClienteItem>> SearchClientesAsync(string query, int limit = 20);
         Task<ClienteItem?> GetClienteDetalleAsync(int clienteId);
         Task<List<CompaniaItem>> GetCompaniasAsync();
