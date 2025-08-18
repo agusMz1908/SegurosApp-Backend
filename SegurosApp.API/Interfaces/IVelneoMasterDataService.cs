@@ -1,4 +1,5 @@
-﻿using SegurosApp.API.DTOs.Velneo.Item;
+﻿using SegurosApp.API.DTOs;
+using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
 
@@ -17,5 +18,10 @@ namespace SegurosApp.API.Interfaces
         Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue);
         Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue);
         Task<CreatePolizaResponse> CreatePolizaAsync(CreatePolizaRequest request);
+        Task<List<ClienteItem>> SearchClientesAsync(string query, int limit = 20);
+        Task<ClienteItem?> GetClienteDetalleAsync(int clienteId);
+        Task<List<CompaniaItem>> GetCompaniasAsync();
+        Task<List<SeccionItem>> GetSeccionesAsync(int? companiaId = null);
+        Task<List<ClienteItem>> AdvancedSearchClientesAsync(ClienteSearchFilters filters);
     }
 }

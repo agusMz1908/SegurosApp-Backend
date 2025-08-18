@@ -1,9 +1,13 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
+using SegurosApp.API.Converters;
 using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
+using SegurosApp.API.Converters;
 using SegurosApp.API.Interfaces;
+using System.Text;
 using System.Text.Json;
+using SegurosApp.API.DTOs;
 
 namespace SegurosApp.API.Services
 {
@@ -14,10 +18,8 @@ namespace SegurosApp.API.Services
         private readonly IMemoryCache _cache;
         private readonly ILogger<VelneoMasterDataService> _logger;
 
-        private string ApiKey => _configuration["VelneoAPI:ApiKey"] ??
-            "349THFN38U09428URUHTBG3RNMETJ859JP9";
-        private string BaseUrl => _configuration["VelneoAPI:BaseUrl"] ??
-            "https://app.uruguaycom.com/apid/Seguros_dat/v1";
+        private string ApiKey => _configuration["VelneoAPI:ApiKey"];
+        private string BaseUrl => _configuration["VelneoAPI:BaseUrl"];
 
         public VelneoMasterDataService(
             HttpClient httpClient,
@@ -304,49 +306,582 @@ namespace SegurosApp.API.Services
             return new List<TarifaItem>();
         }
 
+        public async Task<List<CompaniaItem>> GetCompaniasAsync()
+        {
+            const string cacheKey = "velneo_companias";
+
+            if (_cache.TryGetValue(cacheKey, out List<CompaniaItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                _logger.LogInformation("🏢 Obteniendo compañías desde Velneo...");
+
+                // ✅ LLAMADA REAL A VELNEO - Endpoint que funciona
+                var url = $"{BaseUrl}/companias?api_key={ApiKey}";
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    _logger.LogDebug("🏢 Raw response from Velneo companias: {Json}",
+                        json.Length > 500 ? json.Substring(0, 500) + "..." : json);
+
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoCompaniaResponse>(json,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    if (velneoResponse?.companias != null)
+                    {
+                        // ✅ FILTRAR SOLO COMPAÑÍAS ACTIVAS (que tienen nombre)
+                        var companiasActivas = velneoResponse.companias
+                            .Where(c => c.IsActive)
+                            .OrderBy(c => c.DisplayName)
+                            .ToList();
+
+                        // Cache por 4 horas (datos maestros cambian poco)
+                        _cache.Set(cacheKey, companiasActivas, TimeSpan.FromHours(4));
+
+                        _logger.LogInformation("✅ Compañías obtenidas desde Velneo: {Count}/{Total} activas",
+                            companiasActivas.Count, velneoResponse.companias.Count);
+                        return companiasActivas;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Respuesta Velneo compañías vacía o malformada");
+                    }
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en Velneo companias: {StatusCode} - {Error}",
+                        response.StatusCode, errorContent);
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ Error de conexión obteniendo compañías desde Velneo");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "❌ Error parseando JSON compañías de Velneo");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado obteniendo compañías desde Velneo");
+            }
+
+            return new List<CompaniaItem>();
+        }
+
+        /// <summary>
+        /// 📋 Obtener secciones reales desde API Velneo
+        /// </summary>
+        public async Task<List<SeccionItem>> GetSeccionesAsync(int? companiaId = null)
+        {
+            var cacheKey = companiaId.HasValue
+                ? $"velneo_secciones_compania_{companiaId}"
+                : "velneo_secciones_all";
+
+            if (_cache.TryGetValue(cacheKey, out List<SeccionItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                _logger.LogInformation("📋 Obteniendo secciones desde Velneo (compañía: {CompaniaId})...",
+                    companiaId?.ToString() ?? "todas");
+
+                // Nota: Por ahora todas las secciones, luego se puede filtrar por compañía
+                var url = $"{BaseUrl}/secciones?api_key={ApiKey}";
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    _logger.LogDebug("📋 Raw response from Velneo secciones: {Json}",
+                        json.Length > 500 ? json.Substring(0, 500) + "..." : json);
+
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoSeccionResponse>(json,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    if (velneoResponse?.secciones != null)
+                    {
+                        // ✅ FILTRAR SOLO SECCIONES ACTIVAS
+                        var seccionesActivas = velneoResponse.secciones
+                            .Where(s => s.IsActive)
+                            .OrderBy(s => s.DisplayName)
+                            .ToList();
+
+                        // TODO: Cuando Velneo implemente filtro por compañía, usar companiaId
+                        // Por ahora devolvemos todas las secciones activas
+
+                        // Cache por 4 horas
+                        _cache.Set(cacheKey, seccionesActivas, TimeSpan.FromHours(4));
+
+                        _logger.LogInformation("✅ Secciones obtenidas desde Velneo: {Count}/{Total} activas",
+                            seccionesActivas.Count, velneoResponse.secciones.Count);
+                        return seccionesActivas;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Respuesta Velneo secciones vacía o malformada");
+                    }
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en Velneo secciones: {StatusCode} - {Error}",
+                        response.StatusCode, errorContent);
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ Error de conexión obteniendo secciones desde Velneo");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "❌ Error parseando JSON secciones de Velneo");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado obteniendo secciones desde Velneo");
+            }
+
+            return new List<SeccionItem>();
+        }
+
+        public async Task<List<ClienteItem>> SearchClientesAsync(string query, int limit = 20)
+        {
+            var cacheKey = $"velneo_clientes_search_{query.ToLowerInvariant()}_{limit}";
+
+            if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                _logger.LogInformation("🔍 Buscando clientes en Velneo con filtro: '{Query}' (limit: {Limit})", query, limit);
+
+                var encodedQuery = Uri.EscapeDataString(query);
+                var url = $"{BaseUrl}/clientes?filter%5Bnombre%5D={encodedQuery}&api_key={ApiKey}";
+
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+
+                    var jsonOptions = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = {
+                    new NullableDateTimeConverter(),
+                    new DateTimeConverter()
+                }
+                    };
+
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json, jsonOptions);
+
+                    if (velneoResponse?.clientes != null)
+                    {
+                        var clientesFiltrados = velneoResponse.clientes
+                            .Where(c => c.activo)
+                            .Take(limit)
+                            .ToList();
+
+                        _cache.Set(cacheKey, clientesFiltrados, TimeSpan.FromMinutes(5));
+
+                        _logger.LogInformation("✅ Clientes encontrados en Velneo: {Count}/{Total} activos para '{Query}'",
+                            clientesFiltrados.Count, velneoResponse.clientes.Count, query);
+
+                        return clientesFiltrados;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Respuesta Velneo clientes vacía o malformada para query '{Query}'", query);
+                    }
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en Velneo clientes con filtro: {StatusCode} - {Error}",
+                        response.StatusCode, errorContent);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "❌ Error parseando JSON de clientes Velneo para query '{Query}' - Path: {Path}",
+                    query, ex.Path ?? "desconocido");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ Error de conexión buscando clientes en Velneo con query '{Query}'", query);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado buscando clientes en Velneo con query '{Query}'", query);
+            }
+
+            return new List<ClienteItem>();
+        }
+
+        public async Task<List<ClienteItem>> AdvancedSearchClientesAsync(ClienteSearchFilters filters)
+        {
+            var cacheKey = $"velneo_clientes_advanced_{filters.GetCacheKey()}";
+
+            if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                _logger.LogInformation("🔍 Búsqueda avanzada clientes en Velneo: {Filters}", filters.ToString());
+
+                var urlBuilder = new StringBuilder($"{BaseUrl}/clientes?");
+                var hasFilters = false;
+                if (!string.IsNullOrWhiteSpace(filters.Nombre))
+                {
+                    urlBuilder.Append($"filter%5Bnombre%5D={Uri.EscapeDataString(filters.Nombre)}&");
+                    hasFilters = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(filters.Direcciones))
+                {
+                    urlBuilder.Append($"filter%5Bdirecciones%5D={Uri.EscapeDataString(filters.Direcciones)}&");
+                    hasFilters = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(filters.Clitel))
+                {
+                    urlBuilder.Append($"filter%5Bclitel%5D={Uri.EscapeDataString(filters.Clitel)}&");
+                    hasFilters = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(filters.Clicel))
+                {
+                    urlBuilder.Append($"filter%5Bclicel%5D={Uri.EscapeDataString(filters.Clicel)}&");
+                    hasFilters = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(filters.Mail))
+                {
+                    urlBuilder.Append($"filter%5Bmail%5D={Uri.EscapeDataString(filters.Mail)}&");
+                    hasFilters = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(filters.Cliruc))
+                {
+                    urlBuilder.Append($"filter%5Bcliruc%5D={Uri.EscapeDataString(filters.Cliruc)}&");
+                    hasFilters = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(filters.Cliced))
+                {
+                    urlBuilder.Append($"filter%5Bcliced%5D={Uri.EscapeDataString(filters.Cliced)}&");
+                    hasFilters = true;
+                }
+
+                urlBuilder.Append($"api_key={ApiKey}");
+
+                if (!hasFilters)
+                {
+                    _logger.LogWarning("⚠️ Búsqueda avanzada sin filtros - esto puede devolver muchos resultados");
+                }
+
+                var url = urlBuilder.ToString();
+                _logger.LogDebug("🔍 URL Velneo búsqueda avanzada: {Url}", url);
+
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    _logger.LogDebug("🔍 Raw response Velneo búsqueda avanzada (primeros 300 chars): {Json}",
+                        json.Length > 300 ? json.Substring(0, 300) + "..." : json);
+
+                    var jsonOptions = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = {
+                    new NullableDateTimeConverter(),
+                    new DateTimeConverter()
+                }
+                    };
+
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json, jsonOptions);
+
+                    if (velneoResponse?.clientes != null)
+                    {
+                        var clientesFiltrados = velneoResponse.clientes.AsEnumerable();
+                        if (filters.SoloActivos)
+                        {
+                            clientesFiltrados = clientesFiltrados.Where(c => c.activo);
+                        }
+
+                        var resultados = clientesFiltrados.Take(filters.Limit).ToList();
+
+                        _cache.Set(cacheKey, resultados, TimeSpan.FromMinutes(3));
+
+                        _logger.LogInformation("✅ Búsqueda avanzada clientes completada: {Count}/{Total} resultados con {ActiveFilters} filtros activos",
+                            resultados.Count, velneoResponse.clientes.Count, filters.GetActiveFiltersCount());
+
+                        if (resultados.Count > 0)
+                        {
+                            var ejemplo = resultados.First();
+                            _logger.LogDebug("📋 Ejemplo resultado: ID={Id}, Nombre='{Nombre}', RUC='{Ruc}', Cédula='{Cedula}'",
+                                ejemplo.id, ejemplo.DisplayName, ejemplo.cliruc, ejemplo.cliced);
+                        }
+
+                        return resultados;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Respuesta Velneo búsqueda avanzada vacía o malformada");
+                    }
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en Velneo búsqueda avanzada: {StatusCode} - {Error}",
+                        response.StatusCode, errorContent);
+                }
+            }
+            catch (UriFormatException ex)
+            {
+                _logger.LogError(ex, "❌ Error construyendo URL para búsqueda avanzada");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ Error de conexión en búsqueda avanzada clientes");
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "❌ Error parseando JSON búsqueda avanzada clientes");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado en búsqueda avanzada clientes");
+            }
+
+            return new List<ClienteItem>();
+        }
+
+        public async Task<ClienteItem?> GetClienteDetalleAsync(int clienteId)
+        {
+            var cacheKey = $"velneo_cliente_detalle_{clienteId}";
+
+            if (_cache.TryGetValue(cacheKey, out ClienteItem? cached) && cached != null)
+            {
+                _logger.LogInformation("💾 Cliente {ClienteId} obtenido desde cache", clienteId);
+                return cached;
+            }
+
+            try
+            {
+                _logger.LogInformation("👤 Obteniendo detalle cliente desde Velneo: {ClienteId}", clienteId);
+
+                var url = $"{BaseUrl}/clientes/{clienteId}?api_key={ApiKey}";
+                _logger.LogDebug("🔗 URL Velneo: {Url}", url);
+
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    _logger.LogDebug("📄 Raw JSON response length: {Length} characters", json.Length);
+
+                    if (string.IsNullOrWhiteSpace(json))
+                    {
+                        _logger.LogWarning("⚠️ Velneo devolvió respuesta vacía para cliente {ClienteId}", clienteId);
+                        return null;
+                    }
+
+                    var jsonOptions = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        Converters = {
+                    new NullableDateTimeConverter(),
+                    new DateTimeConverter()
+                        }
+                    };
+
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json, jsonOptions);
+
+                    if (velneoResponse?.clientes != null && velneoResponse.clientes.Count > 0)
+                    {
+                        var cliente = velneoResponse.clientes.First();
+
+                        _logger.LogInformation("✅ Cliente deserializado exitosamente: ID={Id}, Nombre='{Nombre}', RUC='{Ruc}', Activo={Activo}",
+                            cliente.id, cliente.clinom, cliente.cliruc, cliente.activo);
+
+                        LogDateTimeFields(cliente, clienteId);
+
+                        if (cliente.id > 0 && !string.IsNullOrEmpty(cliente.clinom))
+                        {
+                            _cache.Set(cacheKey, cliente, TimeSpan.FromHours(1));
+
+                            _logger.LogInformation("✅ Cliente {ClienteId} cacheado exitosamente - {DisplayName}",
+                                clienteId, cliente.DisplayName);
+
+                            return cliente;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("⚠️ Cliente {ClienteId} encontrado pero sin datos válidos (ID={Id}, Nombre='{Nombre}')",
+                                clienteId, cliente.id, cliente.clinom);
+                        }
+                    }
+                    else if (velneoResponse?.count == 0)
+                    {
+                        _logger.LogInformation("🔍 Cliente {ClienteId} no existe en Velneo (count=0)", clienteId);
+                        return null;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Respuesta Velneo malformada para cliente {ClienteId}: count={Count}, clientes={ClientesCount}",
+                            clienteId, velneoResponse?.count ?? -1, velneoResponse?.clientes?.Count ?? -1);
+                    }
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogInformation("🔍 Cliente {ClienteId} no existe en Velneo (404)", clienteId);
+                    return null;
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en Velneo cliente/{id}: {StatusCode} - {Error}",
+                        response.StatusCode, errorContent);
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ Error de conexión obteniendo cliente {ClienteId} desde Velneo", clienteId);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "❌ Error deserializando JSON para cliente {ClienteId} desde Velneo", clienteId);
+
+                _logger.LogDebug("🔍 JSON problemático para cliente {ClienteId}: {JsonSnippet}",
+                    clienteId, ex.Path ?? "path desconocido");
+            }
+            catch (TaskCanceledException ex)
+            {
+                _logger.LogError(ex, "❌ Timeout obteniendo cliente {ClienteId} desde Velneo", clienteId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado obteniendo cliente {ClienteId} desde Velneo", clienteId);
+            }
+
+            return null;
+        }
+
+        private void LogDateTimeFields(ClienteItem cliente, int clienteId)
+        {
+            try
+            {
+                var dateFields = new[]
+                {
+            (nameof(cliente.clifchnac), cliente.clifchnac),
+            (nameof(cliente.clifching), cliente.clifching),
+            (nameof(cliente.clifchegr), cliente.clifchegr),
+            (nameof(cliente.clivtoced), cliente.clivtoced),
+            (nameof(cliente.clivtolib), cliente.clivtolib),
+            (nameof(cliente.clifchnac1), cliente.clifchnac1),
+            (nameof(cliente.fch_ingreso), cliente.fch_ingreso),
+            (nameof(cliente.last_update), cliente.last_update)
+        };
+
+                var validDates = dateFields.Where(d => d.Item2.HasValue).Count();
+                var totalDates = dateFields.Length;
+
+                _logger.LogDebug("📅 Cliente {ClienteId} fechas procesadas: {ValidDates}/{TotalDates} válidas",
+                    clienteId, validDates, totalDates);
+
+                foreach (var (fieldName, value) in dateFields.Where(d => d.Item2.HasValue))
+                {
+                    _logger.LogDebug("📅 {FieldName}: {Value}", fieldName, value!.Value.ToString("yyyy-MM-dd"));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("⚠️ Error logging fechas para cliente {ClienteId}: {Error}", clienteId, ex.Message);
+            }
+        }
+
         public async Task<CompleteMasterDataResponse> GetAllMasterDataAsync()
         {
-            const string cacheKey = "velneo_all_master_data";
+            const string cacheKey = "velneo_all_master_data_v3"; 
 
             if (_cache.TryGetValue(cacheKey, out CompleteMasterDataResponse? cached) && cached != null)
                 return cached;
 
-            _logger.LogInformation("🔄 Obteniendo todo el master data de Velneo...");
+            _logger.LogInformation("🔄 Obteniendo master data completo desde Velneo (incluye clientes/compañías/secciones reales)...");
 
-            // Obtener todo en paralelo
-            var departamentosTask = GetDepartamentosAsync();
-            var combustiblesTask = GetCombustiblesAsync();
-            var corredoresTask = GetCorredoresAsync();
-            var categoriasTask = GetCategoriasAsync();
-            var destinosTask = GetDestinosAsync();
-            var calidadesTask = GetCalidadesAsync();
-            var tarifasTask = GetTarifasAsync();
-
-            await Task.WhenAll(departamentosTask, combustiblesTask, corredoresTask,
-                             categoriasTask, destinosTask, calidadesTask, tarifasTask);
-
-            var result = new CompleteMasterDataResponse
+            try
             {
-                Departamentos = await departamentosTask,
-                Combustibles = await combustiblesTask,
-                Corredores = await corredoresTask,
-                Categorias = await categoriasTask,
-                Destinos = await destinosTask,
-                Calidades = await calidadesTask,
-                Tarifas = await tarifasTask,
-                EstadosGestion = GetEstadosGestion(),
-                Tramites = GetTramites(),
-                EstadosPoliza = GetEstadosPoliza(),
-                FormasPago = GetFormasPago()
-            };
+                var departamentosTask = GetDepartamentosAsync();
+                var combustiblesTask = GetCombustiblesAsync();
+                var corredoresTask = GetCorredoresAsync();
+                var categoriasTask = GetCategoriasAsync();
+                var destinosTask = GetDestinosAsync();
+                var calidadesTask = GetCalidadesAsync();
+                var tarifasTask = GetTarifasAsync();
+                var companiasTask = GetCompaniasAsync();
+                var seccionesTask = GetSeccionesAsync();
 
-            // Cache completo por 1 hora
-            _cache.Set(cacheKey, result, TimeSpan.FromHours(1));
+                await Task.WhenAll(
+                    departamentosTask, combustiblesTask, corredoresTask,
+                    categoriasTask, destinosTask, calidadesTask, tarifasTask,
+                    companiasTask, seccionesTask
+                );
 
-            _logger.LogInformation("✅ Master data completo obtenido y cacheado");
-            return result;
+                var result = new CompleteMasterDataResponse
+                {
+                    Departamentos = await departamentosTask,
+                    Combustibles = await combustiblesTask,
+                    Corredores = await corredoresTask,
+                    Categorias = await categoriasTask,
+                    Destinos = await destinosTask,
+                    Calidades = await calidadesTask,
+                    Tarifas = await tarifasTask,
+                    Companias = await companiasTask,
+                    Secciones = await seccionesTask,
+
+                    // Datos estáticos
+                    EstadosGestion = GetEstadosGestion(),
+                    Tramites = GetTramites(),
+                    EstadosPoliza = GetEstadosPoliza(),
+                    FormasPago = GetFormasPago()
+                };
+
+                _cache.Set(cacheKey, result, TimeSpan.FromHours(1));
+
+                _logger.LogInformation("✅ Master data completo obtenido desde Velneo: {CompaniasCount} compañías, {SeccionesCount} secciones",
+                    result.Companias.Count, result.Secciones.Count);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo master data completo desde Velneo");
+
+                return new CompleteMasterDataResponse
+                {
+                    Departamentos = new(),
+                    Combustibles = new(),
+                    Corredores = new(),
+                    Categorias = new(),
+                    Destinos = new(),
+                    Calidades = new(),
+                    Tarifas = new(),
+                    Companias = new(),
+                    Secciones = new(),
+                    EstadosGestion = GetEstadosGestion(),
+                    Tramites = GetTramites(),
+                    EstadosPoliza = GetEstadosPoliza(),
+                    FormasPago = GetFormasPago()
+                };
+            }
         }
-
+   
         private List<StaticOption> GetEstadosGestion()
         {
             return new List<StaticOption>

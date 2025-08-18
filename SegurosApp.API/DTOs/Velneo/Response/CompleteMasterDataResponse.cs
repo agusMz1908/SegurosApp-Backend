@@ -11,6 +11,8 @@ namespace SegurosApp.API.DTOs.Velneo.Response
         public List<DestinoItem> Destinos { get; set; } = new();
         public List<CalidadItem> Calidades { get; set; } = new();
         public List<TarifaItem> Tarifas { get; set; } = new();
+        public List<CompaniaItem> Companias { get; set; } = new();
+        public List<SeccionItem> Secciones { get; set; } = new();
         public List<StaticOption> EstadosGestion { get; set; } = new();
         public List<StaticOption> Tramites { get; set; } = new();
         public List<StaticOption> EstadosPoliza { get; set; } = new();
