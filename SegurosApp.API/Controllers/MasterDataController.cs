@@ -101,22 +101,61 @@ namespace SegurosApp.API.Controllers
 
         [HttpPost("create-poliza")]
         [ProducesResponseType(typeof(CreatePolizaResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(401)]
         public async Task<ActionResult<CreatePolizaResponse>> CreatePoliza(
-            [FromBody] CreatePolizaRequest request)
+            [FromBody] VelneoPolizaRequest request)
         {
             try
             {
                 var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return Unauthorized(new CreatePolizaResponse
+                    {
+                        Success = false,
+                        Message = "Usuario no autenticado"
+                    });
+                }
 
-                _logger.LogInformation("🚀 Usuario {UserId} creando póliza para scan {ScanId}",
-                    userId, request.ScanId);
+                _logger.LogInformation("🚀 Usuario {UserId} creando póliza: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}, Póliza={PolicyNumber}",
+                    userId, request.clinro, request.comcod, request.seccod, request.conpol);
+
+                if (request.clinro <= 0 || request.comcod <= 0 || request.seccod <= 0)
+                {
+                    return BadRequest(new CreatePolizaResponse
+                    {
+                        Success = false,
+                        Message = "Cliente ID, Compañía ID y Sección ID son requeridos"
+                    });
+                }
+
+                if (string.IsNullOrEmpty(request.conpol))
+                {
+                    return BadRequest(new CreatePolizaResponse
+                    {
+                        Success = false,
+                        Message = "Número de póliza es requerido"
+                    });
+                }
+
+                if (request.ingresado == default)
+                {
+                    request.ingresado = DateTime.UtcNow;
+                }
+
+                if (request.last_update == default)
+                {
+                    request.last_update = DateTime.UtcNow;
+                }
 
                 var result = await _masterDataService.CreatePolizaAsync(request);
 
                 if (result.Success)
                 {
-                    _logger.LogInformation("✅ Póliza creada exitosamente: {PolizaId} - {PolizaNumber}",
-                        result.PolizaId, result.PolizaNumber);
+                    _logger.LogInformation("✅ Póliza creada exitosamente: VelneoId={VelneoId}, Número={PolizaNumber}",
+                        result.VelneoPolizaId, result.PolizaNumber);
+
                     return Ok(result);
                 }
                 else

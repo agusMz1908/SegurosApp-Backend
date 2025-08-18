@@ -1113,7 +1113,6 @@ namespace SegurosApp.API.Services
                 ValidateVelneoPolizaRequest(request);
 
                 var velneoPayload = MapToVelneoApiFormat(request);
-
                 var url = $"{BaseUrl}/polizas?api_key={ApiKey}";
 
                 var jsonPayload = JsonSerializer.Serialize(velneoPayload, new JsonSerializerOptions
@@ -1132,6 +1131,7 @@ namespace SegurosApp.API.Services
                 {
                     var responseJson = await response.Content.ReadAsStringAsync();
                     _logger.LogDebug("📥 Respuesta Velneo: {Response}", responseJson);
+
                     var velneoResponse = ParseVelneoResponse(responseJson);
 
                     _logger.LogInformation("✅ Póliza creada exitosamente en Velneo: ID={VelneoId}, Número={PolicyNumber}",
@@ -1142,6 +1142,7 @@ namespace SegurosApp.API.Services
                         Success = true,
                         Message = "Póliza creada exitosamente en Velneo",
                         VelneoPolizaId = velneoResponse.VelneoPolizaId,
+                        PolizaId = velneoResponse.VelneoPolizaId, 
                         PolizaNumber = velneoResponse.PolizaNumber,
                         CreatedAt = DateTime.UtcNow,
                         VelneoUrl = GenerateVelneoUrl(velneoResponse.VelneoPolizaId),
@@ -1161,6 +1162,9 @@ namespace SegurosApp.API.Services
                     {
                         Success = false,
                         Message = $"Error en Velneo: {response.StatusCode}",
+                        VelneoPolizaId = null,
+                        PolizaId = null, 
+                        PolizaNumber = "",
                         Validation = new ValidationResult
                         {
                             IsValid = false,
@@ -1176,6 +1180,9 @@ namespace SegurosApp.API.Services
                 {
                     Success = false,
                     Message = $"Error de validación: {ex.Message}",
+                    VelneoPolizaId = null,
+                    PolizaId = null,
+                    PolizaNumber = "",
                     Validation = new ValidationResult
                     {
                         IsValid = false,
@@ -1190,10 +1197,30 @@ namespace SegurosApp.API.Services
                 {
                     Success = false,
                     Message = "Error de conectividad con Velneo",
+                    VelneoPolizaId = null,
+                    PolizaId = null,
+                    PolizaNumber = "",
                     Validation = new ValidationResult
                     {
                         IsValid = false,
                         Errors = new List<string> { "No se pudo conectar con el servicio Velneo" }
+                    }
+                };
+            }
+            catch (TimeoutException ex)
+            {
+                _logger.LogError(ex, "❌ Timeout conectando con Velneo");
+                return new CreatePolizaResponse
+                {
+                    Success = false,
+                    Message = "Timeout conectando con Velneo - Servicio no responde",
+                    VelneoPolizaId = null,
+                    PolizaId = null,
+                    PolizaNumber = "",
+                    Validation = new ValidationResult
+                    {
+                        IsValid = false,
+                        Errors = new List<string> { "Timeout: El servicio Velneo no responde en el tiempo esperado" }
                     }
                 };
             }
@@ -1204,6 +1231,9 @@ namespace SegurosApp.API.Services
                 {
                     Success = false,
                     Message = $"Error inesperado: {ex.Message}",
+                    VelneoPolizaId = null,
+                    PolizaId = null,
+                    PolizaNumber = "",
                     Validation = new ValidationResult
                     {
                         IsValid = false,
