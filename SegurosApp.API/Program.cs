@@ -71,7 +71,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddScoped<IAuthService, AuthService>(); 
 builder.Services.AddScoped<IAzureDocumentService, AzureDocumentService>();
+builder.Services.AddScoped<IVelneoMasterDataService, VelneoMasterDataService>();
 builder.Services.AddScoped<DocumentFieldParser>();
+builder.Services.AddHttpClient<VelneoMasterDataService>();
+
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

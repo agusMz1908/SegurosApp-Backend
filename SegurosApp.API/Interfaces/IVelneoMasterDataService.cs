@@ -1,0 +1,21 @@
+﻿using SegurosApp.API.DTOs.Velneo.Item;
+using SegurosApp.API.DTOs.Velneo.Request;
+using SegurosApp.API.DTOs.Velneo.Response;
+
+namespace SegurosApp.API.Interfaces
+{
+    public interface IVelneoMasterDataService
+    {
+        Task<List<DepartamentoItem>> GetDepartamentosAsync();
+        Task<List<CombustibleItem>> GetCombustiblesAsync();
+        Task<List<CorredorItem>> GetCorredoresAsync();
+        Task<List<CategoriaItem>> GetCategoriasAsync();
+        Task<List<DestinoItem>> GetDestinosAsync();
+        Task<List<CalidadItem>> GetCalidadesAsync();
+        Task<List<TarifaItem>> GetTarifasAsync();
+        Task<CompleteMasterDataResponse> GetAllMasterDataAsync();
+        Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue);
+        Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue);
+        Task<CreatePolizaResponse> CreatePolizaAsync(CreatePolizaRequest request);
+    }
+}

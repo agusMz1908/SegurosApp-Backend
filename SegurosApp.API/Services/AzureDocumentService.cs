@@ -228,7 +228,6 @@ namespace SegurosApp.API.Services
             };
         }
 
-        // ✅ CORREGIDO: Manejo correcto de tipos en filtros
         public async Task<List<DocumentHistoryDto>> GetScanHistoryAsync(int userId, DocumentSearchFilters filters)
         {
             var query = _context.DocumentScans.Where(d => d.UserId == userId);
@@ -254,7 +253,6 @@ namespace SegurosApp.API.Services
             if (filters.MinSuccessRate.HasValue)
                 query = query.Where(d => d.SuccessRate >= filters.MinSuccessRate.Value);
 
-            // ✅ CORREGIDO: Verificación explícita de tipos
             int pageSize;
             if (filters.PageSize.HasValue)
             {
@@ -265,11 +263,11 @@ namespace SegurosApp.API.Services
                 pageSize = filters.Limit;
             }
 
-            int page = filters.Page; // Ya es int, no nullable
+            int page = filters.Page; 
 
             var scans = await query
                 .OrderByDescending(d => d.CreatedAt)
-                .Skip(page * pageSize)
+                .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
 
@@ -746,6 +744,7 @@ namespace SegurosApp.API.Services
             {
                 var totalScansDecimal = (decimal)metrics.TotalScans;
                 var processingTimeDecimal = (decimal)processingTime;
+
 
                 metrics.AvgProcessingTimeMs =
                     (metrics.AvgProcessingTimeMs * (totalScansDecimal - 1) + processingTimeDecimal) / totalScansDecimal;
