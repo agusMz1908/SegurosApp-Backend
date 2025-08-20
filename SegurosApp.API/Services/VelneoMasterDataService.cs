@@ -1133,17 +1133,12 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("🔄 Creando póliza en Velneo: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
                     request.conpol, request.clinro, request.comcod, request.seccod);
-
-                // ✅ CAMBIO CRÍTICO: Usar /contratos en lugar de /polizas
                 var url = $"{BaseUrl}/contratos?api_key={ApiKey}";
 
                 var velneoPayload = CreateVelneoPayload(request);
 
-                // ✅ CAMBIO 2: No usar camelCase para los nombres de propiedades
                 var jsonPayload = JsonSerializer.Serialize(velneoPayload, new JsonSerializerOptions
                 {
-                    // Comentar esta línea para mantener los nombres originales
-                    // PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                     WriteIndented = true
                 });
 
@@ -1188,7 +1183,6 @@ namespace SegurosApp.API.Services
                         };
                     }
 
-                    // ✅ CAMBIO 3: Parsear correctamente la respuesta de /contratos
                     var velneoResponse = ParseVelneoContratosResponse(responseJson);
 
                     _logger.LogInformation("✅ Póliza creada exitosamente en Velneo: ID={VelneoId}, Número={PolicyNumber}",
@@ -1433,7 +1427,7 @@ namespace SegurosApp.API.Services
                 concomotr = 0,
                 conautcome = "",
                 conviafac = "",
-                conviamon = 0,
+                conviamon = request.conviamon ?? 0,
                 conviatpo = "",
                 connrorc = "",
                 condedurc = "",
@@ -1443,7 +1437,7 @@ namespace SegurosApp.API.Services
                 forpagvid = "",
                 clinom = request.clinom ?? "",                   // ✅ Nombre del cliente
                 tarcod = request.tarcod,
-                corrnom = request.corrnom > 0 ? request.corrnom : 0,  // ✅ Corredor
+                corrnom = request.corrnom,
                 connroint = 0,
                 conautnd = "",
                 conpadend = 0,
