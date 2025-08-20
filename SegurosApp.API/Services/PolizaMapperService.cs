@@ -2,6 +2,7 @@
 using SegurosApp.API.Data;
 using SegurosApp.API.DTOs;
 using SegurosApp.API.DTOs.SegurosApp.API.DTOs;
+using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
 using SegurosApp.API.Interfaces;
@@ -113,39 +114,34 @@ namespace SegurosApp.API.Services
                 throw new ArgumentException($"Scan {scanId} no encontrado para usuario {userId}");
             }
 
-            // ✅ DEBUG: VERIFICAR QUE EL SCAN TENGA LOS DATOS
-            _logger.LogInformation("🔧 DEBUG: Scan encontrado - FileName={FileName}, UserId={UserId}", scan.FileName, scan.UserId);
-            _logger.LogInformation("🔧 DEBUG: Valores BD - ClienteId={ClienteId}, CompaniaId={CompaniaId}, SeccionId={SeccionId}",
-                scan.ClienteId, scan.CompaniaId, scan.SeccionId);
-
             var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
 
-            // ✅ OBTENER CONTEXTO CON LÓGICA CORREGIDA
+            // ✅ OBTENER CONTEXTO
             var contextClienteId = GetValueWithOverride(overrides?.ClienteId, scan.ClienteId, "ClienteId");
             var contextCompaniaId = GetValueWithOverride(overrides?.CompaniaId, scan.CompaniaId, "CompaniaId");
             var contextSeccionId = GetValueWithOverride(overrides?.SeccionId, scan.SeccionId, "SeccionId");
 
-            _logger.LogInformation("📋 Contexto final: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
-                contextClienteId, contextCompaniaId, contextSeccionId);
+            // ✅ OBTENER DATOS DEL CLIENTE DESDE VELNEO
+            ClienteItem? clienteInfo = null;
+            CompaniaItem? companiaInfo = null;
+            SeccionItem? seccionInfo = null;
 
-            // ✅ DEBUG: VERIFICAR OVERRIDES
-            if (overrides != null)
+            try
             {
-                _logger.LogInformation("🔧 DEBUG: Overrides recibidos - ClienteId={ClienteId}, CompaniaId={CompaniaId}, SeccionId={SeccionId}",
-                    overrides.ClienteId, overrides.CompaniaId, overrides.SeccionId);
-            }
-            else
-            {
-                _logger.LogInformation("🔧 DEBUG: No se recibieron overrides");
-            }
+                clienteInfo = await _masterDataService.GetClienteDetalleAsync(contextClienteId);
 
-            // ✅ VALIDAR QUE TENEMOS EL CONTEXTO
-            if (contextClienteId == 0 || contextCompaniaId == 0 || contextSeccionId == 0)
+                // Obtener información de la compañía
+                var companias = await _masterDataService.GetCompaniasAsync();
+                companiaInfo = companias.FirstOrDefault(c => c.id == contextCompaniaId);
+
+                // Obtener información de la sección
+                var secciones = await _masterDataService.GetSeccionesAsync(contextCompaniaId);
+                seccionInfo = secciones.FirstOrDefault(s => s.id == contextSeccionId);
+            }
+            catch (Exception ex)
             {
-                _logger.LogError("❌ Contexto incompleto en scan {ScanId}: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
-                    scanId, contextClienteId, contextCompaniaId, contextSeccionId);
-                throw new ValidationException($"Contexto incompleto en scan {scanId}: Cliente={contextClienteId}, Compañía={contextCompaniaId}, Sección={contextSeccionId}");
+                _logger.LogWarning("⚠️ Error obteniendo información de maestros: {Error}", ex.Message);
             }
 
             // ✅ DEBUG: EXTRAER Y DEBUGGEAR FECHAS
@@ -154,8 +150,27 @@ namespace SegurosApp.API.Services
             var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
             var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
 
-            _logger.LogInformation("🔧 DEBUG FECHAS - Raw Start: '{RawStart}' -> Formatted: '{FormattedStart}'", rawStartDate, formattedStartDate);
-            _logger.LogInformation("🔧 DEBUG FECHAS - Raw End: '{RawEnd}' -> Formatted: '{FormattedEnd}'", rawEndDate, formattedEndDate);
+            // ✅ DEBUG: EXTRAER MONTOS Y CUOTAS CON LOGGING DETALLADO
+            _logger.LogInformation("🔍 DEBUG: Extrayendo montos y cuotas...");
+
+            var extractedPremium = ExtractPremium(extractedData);
+            var extractedTotal = ExtractTotalAmount(extractedData);
+            var extractedCuotas = ExtractInstallmentCount(extractedData);
+
+            _logger.LogInformation("💰 DEBUG EXTRAÍDOS:");
+            _logger.LogInformation("  - Premio extraído: {Premium}", extractedPremium);
+            _logger.LogInformation("  - Total extraído: {Total}", extractedTotal);
+            _logger.LogInformation("  - Cuotas extraídas: {Cuotas}", extractedCuotas);
+
+            // ✅ APLICAR OVERRIDES O USAR VALORES EXTRAÍDOS
+            var finalPremium = overrides?.PremiumOverride ?? extractedPremium;
+            var finalTotal = overrides?.TotalOverride ?? extractedTotal;
+            var finalCuotas = overrides?.InstallmentCountOverride ?? extractedCuotas;
+
+            _logger.LogInformation("✅ DEBUG FINALES (después de overrides):");
+            _logger.LogInformation("  - Premio final: {Premium}", finalPremium);
+            _logger.LogInformation("  - Total final: {Total}", finalTotal);
+            _logger.LogInformation("  - Cuotas finales: {Cuotas}", finalCuotas);
 
             var request = new VelneoPolizaRequest
             {
@@ -164,57 +179,129 @@ namespace SegurosApp.API.Services
                 comcod = contextCompaniaId,
                 seccod = contextSeccionId,
 
-                // ✅ DATOS DE PÓLIZA - SIN LITERAL "string"
+                // ✅ DATOS DE PÓLIZA
                 conpol = ExtractPolicyNumber(extractedData),
                 conend = ExtractEndorsement(extractedData),
                 confchdes = GetStringValueWithOverride(overrides?.StartDateOverride, formattedStartDate, "FechaInicio"),
                 confchhas = GetStringValueWithOverride(overrides?.EndDateOverride, formattedEndDate, "FechaFin"),
-                conpremio = (int)(overrides?.PremiumOverride ?? ExtractPremium(extractedData)),
-                contot = (int)(overrides?.PremiumOverride ?? ExtractTotalAmount(extractedData)),
 
-                // ✅ DATOS VEHÍCULO - EXTRAER VALORES REALES
-                conmaraut = ExtractVehicleBrand(extractedData),
-                conmodaut = ExtractVehicleModel(extractedData),
+                // ✅ MONTOS - CORREGIDOS PARA USAR VALORES EXTRAÍDOS
+                conpremio = (int)Math.Round(finalPremium),
+                contot = (int)Math.Round(finalTotal),
+
+                // ✅ DATOS DEL VEHÍCULO - MEJORADOS
+                conmaraut = GetStringValueWithOverride(overrides?.VehicleBrandOverride, ExtractVehicleBrand(extractedData), "MarcaVehiculo"),
+                conmodaut = GetStringValueWithOverride(overrides?.VehicleModelOverride, ExtractVehicleModel(extractedData), "ModeloVehiculo"),
                 conanioaut = overrides?.VehicleYearOverride ?? ExtractVehicleYear(extractedData),
-                conmotor = ExtractMotorNumber(extractedData),
-                conchasis = ExtractChassisNumber(extractedData),
+                conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, ExtractMotorNumber(extractedData), "NumeroMotor"),
+                conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, ExtractChassisNumber(extractedData), "NumeroChasis"),
+                conmataut = ExtractVehiclePlate(extractedData), // ✅ NUEVO: Matrícula
 
-                // ✅ MAPEOS A MASTER DATA (usar valores por defecto válidos si no se encuentran)
+                // ✅ DATOS DEL CLIENTE - NUEVOS CAMPOS
+                clinom = clienteInfo?.clinom ?? "",           // Nombre desde Velneo
+                condom = clienteInfo?.clidir ?? ExtractClientAddress(extractedData), // Dirección desde Velneo o extraída
+                clinro1 = ExtractBeneficiaryId(extractedData), // Tomador si es diferente
+
+                // ✅ MASTER DATA IDS - CON OVERRIDES
                 dptnom = overrides?.DepartmentIdOverride ?? await FindDepartmentIdAsync(extractedData),
                 combustibles = overrides?.FuelCodeOverride ?? await FindFuelCodeAsync(extractedData),
                 desdsc = overrides?.DestinationIdOverride ?? await FindDestinationIdAsync(extractedData),
                 catdsc = overrides?.CategoryIdOverride ?? await FindCategoryIdAsync(extractedData),
                 caldsc = overrides?.QualityIdOverride ?? await FindQualityIdAsync(extractedData),
                 tarcod = overrides?.TariffIdOverride ?? await FindTariffIdAsync(extractedData),
+                corrnom = ExtractBrokerId(extractedData), // ✅ NUEVO: Corredor
 
-                // ✅ FORMA DE PAGO
-                consta = MapPaymentMethodCode(ExtractPaymentMethod(extractedData)),
-                concuo = overrides?.InstallmentCountOverride ?? ExtractInstallmentCount(extractedData),
+                // ✅ CONDICIONES DE PAGO - MEJORADAS
+                consta = MapPaymentMethodCode(overrides?.PaymentMethodOverride ?? ExtractPaymentMethod(extractedData)),
+                concuo = finalCuotas, // ✅ USAR VALOR FINAL EXTRAÍDO
+                moncod = ExtractCurrencyCode(extractedData), // ✅ MEJORADO: Detectar moneda
+
+                // ✅ ESTADOS - CON VALORES POR DEFECTO CORRECTOS
+                congesti = "1",          // Estado gestión activo
+                congeses = "2",          // Estado específico por defecto
+                contra = "1",            // Trámite activo
+                convig = "1",            // Vigencia activa
+
+                // ✅ DATOS ADICIONALES - NOMBRES DESDE VELNEO
+                com_alias = companiaInfo?.comnom ?? "",      // ✅ Nombre de la compañía
+                ramo = seccionInfo?.seccion ?? "",           // ✅ Nombre de la sección
 
                 // ✅ METADATOS
+                ingresado = DateTime.UtcNow,
+                last_update = DateTime.UtcNow,
                 app_id = scanId,
-                observaciones = $"Generado desde escaneo automático. {overrides?.Notes ?? scan.PreSelectionNotes ?? ""}".Trim()
+                observaciones = FormatObservations(overrides?.Notes, overrides?.UserComments)
             };
 
-            // ✅ AGREGAR LOG PARA VERIFICAR QUE LOS VALORES NO SEAN "string"
-            _logger.LogInformation("🔧 DEBUG: Verificando valores extraídos:");
-            _logger.LogInformation("  - conmaraut: '{Value}'", request.conmaraut);
-            _logger.LogInformation("  - conmodaut: '{Value}'", request.conmodaut);
-            _logger.LogInformation("  - conanioaut: {Value}", request.conanioaut);
-            _logger.LogInformation("  - conpremio: {Value}", request.conpremio);
-            _logger.LogInformation("  - contot: {Value}", request.contot);
+            // ✅ DEBUG: VERIFICAR VALORES FINALES EN EL REQUEST
+            _logger.LogInformation("🔧 DEBUG: Verificando valores FINALES en el request:");
+            _logger.LogInformation("  - request.conpremio: {Value}", request.conpremio);
+            _logger.LogInformation("  - request.contot: {Value}", request.contot);
+            _logger.LogInformation("  - request.concuo: {Value}", request.concuo);
+            _logger.LogInformation("  - request.conmaraut: '{Value}'", request.conmaraut);
+            _logger.LogInformation("  - request.conmodaut: '{Value}'", request.conmodaut);
+            _logger.LogInformation("  - request.conanioaut: {Value}", request.conanioaut);
+            _logger.LogInformation("  - request.clinom: '{Value}'", request.clinom);
+            _logger.LogInformation("  - request.condom: '{Value}'", request.condom);
+            _logger.LogInformation("  - request.moncod: {Value}", request.moncod);
+            _logger.LogInformation("  - request.com_alias: '{Value}'", request.com_alias);
+            _logger.LogInformation("  - request.ramo: '{Value}'", request.ramo);
+            _logger.LogInformation("  - request.congeses: '{Value}'", request.congeses);
 
-            // ✅ DEBUG: MOSTRAR VALORES FINALES ANTES DE VALIDAR
-            _logger.LogInformation("🔧 DEBUG REQUEST - Póliza: '{Poliza}', Fechas: '{FechaInicio}' a '{FechaFin}'",
+            _logger.LogInformation("🔧 DEBUG REQUEST - Póliza: '{Policy}', Fechas: '{StartDate}' a '{EndDate}'",
                 request.conpol, request.confchdes, request.confchhas);
 
-            // ✅ VALIDAR REQUEST
             await ValidateVelneoRequest(request);
-
-            _logger.LogInformation("✅ Request Velneo creado: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+            _logger.LogInformation("✅ Request Velneo validado exitosamente");
+            _logger.LogInformation("✅ Request Velneo creado: Póliza={Policy}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
                 request.conpol, request.clinro, request.comcod, request.seccod);
 
             return request;
+        }
+
+        private string ExtractVehiclePlate(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+        "vehiculo.matricula", "matricula", "MATRICULA", "placa", "patente"
+            };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string ExtractClientAddress(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+        "cliente.direccion", "direccion", "DIRECCION", "domicilio", "address"
+    };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private int ExtractBeneficiaryId(Dictionary<string, object> data)
+        {
+            // Por ahora retornar 0, se puede implementar lógica específica
+            return 0;
+        }
+
+        private int ExtractBrokerId(Dictionary<string, object> data)
+        {
+            // Por ahora retornar 0, se puede implementar lógica específica
+            return 0;
+        }
+
+        private int ExtractCurrencyCode(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] { "moneda", "currency", "divisa" };
+            foreach (var field in possibleFields)
+            {
+                if (TryGetValue(data, field, out var value))
+                {
+                    var normalized = value.ToUpper();
+                    if (normalized.Contains("USD") || normalized.Contains("DOLAR"))
+                        return 840; // USD
+                    if (normalized.Contains("UYU") || normalized.Contains("PESO"))
+                        return 858; // UYU
+                }
+            }
+            return 858; // Por defecto UYU
         }
 
         private int GetValueWithOverride(int? overrideValue, int? dbValue, string fieldName)
@@ -228,6 +315,27 @@ namespace SegurosApp.API.Services
             var result = dbValue ?? 0;
             _logger.LogDebug("🔧 Usando BD para {FieldName}: {Value}", fieldName, result);
             return result;
+        }
+
+        private string ExtractCompanyAlias(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+        "compania.alias", "alias_compania", "company_alias"
+    };
+            return GetFirstValidValue(data, possibleFields);
+        }
+
+        private string FormatObservations(string? notes, string? userComments)
+        {
+            var parts = new List<string> { "Generado desde escaneo automático." };
+
+            if (!string.IsNullOrWhiteSpace(notes))
+                parts.Add($"Notas: {notes}");
+
+            if (!string.IsNullOrWhiteSpace(userComments))
+                parts.Add($"Comentarios: {userComments}");
+
+            return string.Join(" ", parts);
         }
 
         private string GetStringValueWithOverride(string? overrideValue, string defaultValue, string fieldName)
@@ -894,18 +1002,6 @@ namespace SegurosApp.API.Services
             return suggestions;
         }
 
-        private string DeterminePerformanceLevel(int totalTimeMs)
-        {
-            return totalTimeMs switch
-            {
-                < 1000 => "Muy Rápido",
-                < 3000 => "Rápido",
-                < 5000 => "Normal",
-                < 10000 => "Lento",
-                _ => "Muy Lento"
-            };
-        }
-
         private string DetermineOverallConfidenceLevel(decimal averageConfidence)
         {
             return averageConfidence switch
@@ -1040,19 +1136,149 @@ namespace SegurosApp.API.Services
         private decimal ExtractPremium(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "poliza.prima_comercial", "prima_comercial", "conpremio",
-                "financiero.prima_comercial", "datos_poliza"
-            };
-            return ExtractAmountFromFields(data, possibleFields);
+        // ✅ CAMPOS REALES QUE LLEGAN DEL ESCANEO
+        "poliza.prima_comercial",           // "Prima Comercial:\n$ 123.584,47"
+        "financiero.prima_comercial",       // "Prima Comercial:\n$ 123.584,47"
+        "pago.cuotas[0].prima",            // "Prima:\n$ 15.379,00"
+        
+        // Campos adicionales por si acaso
+        "prima_comercial", "conpremio", "premio", "datos_financiero"
+    };
+
+            foreach (var field in possibleFields)
+            {
+                if (TryGetValue(data, field, out var value))
+                {
+                    _logger.LogInformation("🎯 ExtractPremium - Campo encontrado: '{Field}' = '{Value}'", field, value);
+                    var amount = ExtractAmountFromString(value);
+                    if (amount > 0)
+                    {
+                        _logger.LogInformation("✅ ExtractPremium - Premio extraído: {Amount} desde campo '{Field}'", amount, field);
+                        return amount;
+                    }
+                }
+            }
+
+            _logger.LogWarning("⚠️ ExtractPremium - No se encontró valor de premio en ningún campo");
+            return 0;
+        }
+
+        private decimal ExtractAmountFromString(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return 0;
+
+            try
+            {
+                // ✅ LIMPIAR EL STRING: quitar texto descriptivo y símbolos
+                var cleanValue = value
+                    .Replace("Prima Comercial:", "")
+                    .Replace("Premio Total a Pagar:", "")
+                    .Replace("Prima:", "")
+                    .Replace("$", "")
+                    .Replace("€", "")
+                    .Replace("UYU", "")
+                    .Replace("USD", "")
+                    .Replace("PESOS", "")
+                    .Replace("PESO URUGUAYO", "")
+                    .Replace("\n", " ")
+                    .Replace("\r", " ")
+                    .Trim();
+
+                // ✅ BUSCAR PATRÓN DE NÚMERO CON FORMATO URUGUAYO: 123.584,47
+                var uruguayanMatch = Regex.Match(cleanValue, @"(\d{1,3}(?:\.\d{3})*,\d{2})");
+                if (uruguayanMatch.Success)
+                {
+                    var uruguayanNumber = uruguayanMatch.Groups[1].Value
+                        .Replace(".", "")  // Quitar separadores de miles
+                        .Replace(",", "."); // Cambiar coma decimal por punto
+
+                    if (decimal.TryParse(uruguayanNumber, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
+                    {
+                        _logger.LogInformation("✅ Monto extraído (formato uruguayo): '{Input}' -> {Amount}", value, amount);
+                        return amount;
+                    }
+                }
+
+                // ✅ BUSCAR PATRÓN DE NÚMERO ESTÁNDAR: 123,584.47
+                var standardMatch = Regex.Match(cleanValue, @"(\d{1,3}(?:,\d{3})*\.\d{2})");
+                if (standardMatch.Success)
+                {
+                    var standardNumber = standardMatch.Groups[1].Value.Replace(",", ""); // Quitar separadores de miles
+
+                    if (decimal.TryParse(standardNumber, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
+                    {
+                        _logger.LogInformation("✅ Monto extraído (formato estándar): '{Input}' -> {Amount}", value, amount);
+                        return amount;
+                    }
+                }
+
+                // ✅ BUSCAR CUALQUIER NÚMERO
+                var anyNumberMatch = Regex.Match(cleanValue, @"(\d+(?:[.,]\d+)?)");
+                if (anyNumberMatch.Success)
+                {
+                    var numberStr = anyNumberMatch.Groups[1].Value.Replace(",", ".");
+
+                    if (decimal.TryParse(numberStr, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
+                    {
+                        _logger.LogInformation("✅ Monto extraído (número simple): '{Input}' -> {Amount}", value, amount);
+                        return amount;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("⚠️ Error extrayendo monto de '{Value}': {Error}", value, ex.Message);
+            }
+
+            _logger.LogWarning("⚠️ No se pudo extraer monto de: '{Value}'", value);
+            return 0;
         }
 
         private decimal ExtractTotalAmount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "financiero.premio_total", "premio_total", "contot",
-                "PREMIO TOTAL A PAGAR", "datos_poliza"
-            };
-            return ExtractAmountFromFields(data, possibleFields);
+        // ✅ CAMPOS REALES QUE LLEGAN DEL ESCANEO
+        "financiero.premio_total",          // "Premio Total a Pagar:\n$ 153.790,00"
+        "datos_financiero",                 // Contiene "Premio Total a Pagar:\n$ 153.790,00"
+        
+        // Campos adicionales por si acaso
+        "premio_total", "contot", "total", "PREMIO TOTAL A PAGAR"
+    };
+
+            foreach (var field in possibleFields)
+            {
+                if (TryGetValue(data, field, out var value))
+                {
+                    _logger.LogInformation("🎯 ExtractTotalAmount - Campo encontrado: '{Field}' = '{Value}'", field, value);
+
+                    // Para el campo datos_financiero, buscar específicamente "Premio Total a Pagar"
+                    if (field == "datos_financiero" && value.Contains("Premio Total a Pagar"))
+                    {
+                        var match = Regex.Match(value, @"Premio Total a Pagar:\s*\$?\s*([\d.,]+)");
+                        if (match.Success)
+                        {
+                            var amount = ExtractAmountFromString(match.Groups[1].Value);
+                            if (amount > 0)
+                            {
+                                _logger.LogInformation("✅ ExtractTotalAmount - Total extraído: {Amount} desde datos_financiero", amount);
+                                return amount;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var amount = ExtractAmountFromString(value);
+                        if (amount > 0)
+                        {
+                            _logger.LogInformation("✅ ExtractTotalAmount - Total extraído: {Amount} desde campo '{Field}'", amount, field);
+                            return amount;
+                        }
+                    }
+                }
+            }
+
+            _logger.LogWarning("⚠️ ExtractTotalAmount - No se encontró valor total en ningún campo");
+            return 0;
         }
 
         private string ExtractVehicleBrand(Dictionary<string, object> data)
@@ -1090,14 +1316,22 @@ namespace SegurosApp.API.Services
 
         private string ExtractMotorNumber(Dictionary<string, object> data)
         {
-            var possibleFields = new[] { "vehiculo.motor", "motor", "MOTOR", "conmotor" };
-            return GetFirstValidValue(data, possibleFields);
+            var possibleFields = new[] {
+        "vehiculo.motor", "motor", "MOTOR", "numero_motor"
+    };
+            var motorFull = GetFirstValidValue(data, possibleFields);
+
+            return motorFull.Replace("MOTOR", "").Replace("motor", "").Trim();
         }
 
         private string ExtractChassisNumber(Dictionary<string, object> data)
         {
-            var possibleFields = new[] { "vehiculo.chasis", "chasis", "CHASIS", "conchasis" };
-            return GetFirstValidValue(data, possibleFields);
+            var possibleFields = new[] {
+        "vehiculo.chasis", "chasis", "CHASIS", "numero_chasis"
+    };
+            var chassisFull = GetFirstValidValue(data, possibleFields);
+
+            return chassisFull.Replace("CHASIS", "").Replace("chasis", "").Trim();
         }
 
         private string ExtractFuelType(Dictionary<string, object> data)
@@ -1126,28 +1360,48 @@ namespace SegurosApp.API.Services
 
         private string ExtractPaymentMethod(Dictionary<string, object> data)
         {
-            var possibleFields = new[] { "pago.medio", "medio_pago", "forma_pago", "consta" };
+            var possibleFields = new[] {
+        "pago.forma", "forma_pago", "payment_method", "metodo_pago"
+    };
             return GetFirstValidValue(data, possibleFields);
         }
 
         private int ExtractInstallmentCount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "cantidadCuotas", "cantidad_cuotas", "installments", "cuotas"
-            };
+        // ✅ CAMPOS REALES QUE LLEGAN DEL ESCANEO
+        "pago.modo_facturacion",           // "Modo de facturación: 10 cuotas."
+        
+        // Campos adicionales por si acaso
+        "cantidadCuotas", "cantidad_cuotas", "cuotas", "concuo"
+    };
 
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    var match = Regex.Match(value, @"(\d+)");
-                    if (match.Success && int.TryParse(match.Groups[1].Value, out var count))
+                    _logger.LogInformation("🎯 ExtractInstallmentCount - Campo encontrado: '{Field}' = '{Value}'", field, value);
+
+                    // Buscar patrón "X cuotas" o números seguidos de "cuotas"
+                    var match = Regex.Match(value, @"(\d+)\s*cuotas?", RegexOptions.IgnoreCase);
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out var cuotas) && cuotas > 0)
                     {
-                        return count;
+                        _logger.LogInformation("✅ ExtractInstallmentCount - Cuotas extraídas: {Count} desde campo '{Field}'", cuotas, field);
+                        return cuotas;
+                    }
+
+                    // Buscar cualquier número en el texto
+                    var numberMatch = Regex.Match(value, @"(\d+)");
+                    if (numberMatch.Success && int.TryParse(numberMatch.Groups[1].Value, out var number) && number > 0 && number <= 60)
+                    {
+                        _logger.LogInformation("✅ ExtractInstallmentCount - Número extraído: {Count} desde campo '{Field}'", number, field);
+                        return number;
                     }
                 }
             }
-            return 1;
+
+            _logger.LogWarning("⚠️ ExtractInstallmentCount - No se encontró número de cuotas, usando valor por defecto: 1");
+            return 1; // Por defecto 1 cuota
         }
 
         private string ExtractMovementType(Dictionary<string, object> data)
@@ -1362,22 +1616,6 @@ namespace SegurosApp.API.Services
                 }
             }
             return DateTime.Today.ToString("yyyy-MM-dd");
-        }
-
-        private decimal ExtractAmountFromFields(Dictionary<string, object> data, string[] fields)
-        {
-            foreach (var field in fields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var amount = ExtractAmountFromText(value);
-                    if (amount > 0)
-                    {
-                        return amount;
-                    }
-                }
-            }
-            return 0;
         }
 
         private string GetValue(Dictionary<string, object> data, params string[] keys)
