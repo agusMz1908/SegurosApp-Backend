@@ -150,27 +150,19 @@ namespace SegurosApp.API.Services
             var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
             var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
 
-            // ✅ DEBUG: EXTRAER MONTOS Y CUOTAS CON LOGGING DETALLADO
-            _logger.LogInformation("🔍 DEBUG: Extrayendo montos y cuotas...");
+            // ✅ DEBUG: EXTRAER MONTOS Y CUOTAS DIRECTAMENTE (SIN OVERRIDES)
+            _logger.LogInformation("🔍 DEBUG: Extrayendo montos y cuotas directamente...");
 
             var extractedPremium = ExtractPremium(extractedData);
             var extractedTotal = ExtractTotalAmount(extractedData);
             var extractedCuotas = ExtractInstallmentCount(extractedData);
+            var extractedPaymentMethod = ExtractPaymentMethod(extractedData);
 
-            _logger.LogInformation("💰 DEBUG EXTRAÍDOS:");
+            _logger.LogInformation("💰 DEBUG EXTRAÍDOS DIRECTAMENTE:");
             _logger.LogInformation("  - Premio extraído: {Premium}", extractedPremium);
             _logger.LogInformation("  - Total extraído: {Total}", extractedTotal);
             _logger.LogInformation("  - Cuotas extraídas: {Cuotas}", extractedCuotas);
-
-            // ✅ APLICAR OVERRIDES O USAR VALORES EXTRAÍDOS
-            var finalPremium = overrides?.PremiumOverride ?? extractedPremium;
-            var finalTotal = overrides?.TotalOverride ?? extractedTotal;
-            var finalCuotas = overrides?.InstallmentCountOverride ?? extractedCuotas;
-
-            _logger.LogInformation("✅ DEBUG FINALES (después de overrides):");
-            _logger.LogInformation("  - Premio final: {Premium}", finalPremium);
-            _logger.LogInformation("  - Total final: {Total}", finalTotal);
-            _logger.LogInformation("  - Cuotas finales: {Cuotas}", finalCuotas);
+            _logger.LogInformation("  - Forma de pago extraída: '{PaymentMethod}'", extractedPaymentMethod);
 
             var request = new VelneoPolizaRequest
             {
@@ -185,46 +177,46 @@ namespace SegurosApp.API.Services
                 confchdes = GetStringValueWithOverride(overrides?.StartDateOverride, formattedStartDate, "FechaInicio"),
                 confchhas = GetStringValueWithOverride(overrides?.EndDateOverride, formattedEndDate, "FechaFin"),
 
-                // ✅ MONTOS - CORREGIDOS PARA USAR VALORES EXTRAÍDOS
-                conpremio = (int)Math.Round(finalPremium),
-                contot = (int)Math.Round(finalTotal),
+                // ✅ MONTOS - DIRECTOS SIN OVERRIDES
+                conpremio = (int)Math.Round(extractedPremium),
+                contot = (int)Math.Round(extractedTotal),
 
-                // ✅ DATOS DEL VEHÍCULO - MEJORADOS
+                // ✅ DATOS DEL VEHÍCULO - MANTENER OVERRIDES PARA ESTOS
                 conmaraut = GetStringValueWithOverride(overrides?.VehicleBrandOverride, ExtractVehicleBrand(extractedData), "MarcaVehiculo"),
                 conmodaut = GetStringValueWithOverride(overrides?.VehicleModelOverride, ExtractVehicleModel(extractedData), "ModeloVehiculo"),
                 conanioaut = overrides?.VehicleYearOverride ?? ExtractVehicleYear(extractedData),
                 conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, ExtractMotorNumber(extractedData), "NumeroMotor"),
                 conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, ExtractChassisNumber(extractedData), "NumeroChasis"),
-                conmataut = ExtractVehiclePlate(extractedData), // ✅ NUEVO: Matrícula
+                conmataut = ExtractVehiclePlate(extractedData),
 
                 // ✅ DATOS DEL CLIENTE - NUEVOS CAMPOS
-                clinom = clienteInfo?.clinom ?? "",           // Nombre desde Velneo
-                condom = clienteInfo?.clidir ?? ExtractClientAddress(extractedData), // Dirección desde Velneo o extraída
-                clinro1 = ExtractBeneficiaryId(extractedData), // Tomador si es diferente
+                clinom = clienteInfo?.clinom ?? "",
+                condom = clienteInfo?.clidir ?? ExtractClientAddress(extractedData),
+                clinro1 = ExtractBeneficiaryId(extractedData),
 
-                // ✅ MASTER DATA IDS - CON OVERRIDES
+                // ✅ MASTER DATA IDS - MANTENER OVERRIDES PARA ESTOS
                 dptnom = overrides?.DepartmentIdOverride ?? await FindDepartmentIdAsync(extractedData),
                 combustibles = overrides?.FuelCodeOverride ?? await FindFuelCodeAsync(extractedData),
                 desdsc = overrides?.DestinationIdOverride ?? await FindDestinationIdAsync(extractedData),
                 catdsc = overrides?.CategoryIdOverride ?? await FindCategoryIdAsync(extractedData),
                 caldsc = overrides?.QualityIdOverride ?? await FindQualityIdAsync(extractedData),
                 tarcod = overrides?.TariffIdOverride ?? await FindTariffIdAsync(extractedData),
-                corrnom = ExtractBrokerId(extractedData), // ✅ NUEVO: Corredor
+                corrnom = ExtractBrokerId(extractedData),
 
-                // ✅ CONDICIONES DE PAGO - MEJORADAS
-                consta = MapPaymentMethodCode(overrides?.PaymentMethodOverride ?? ExtractPaymentMethod(extractedData)),
-                concuo = finalCuotas, // ✅ USAR VALOR FINAL EXTRAÍDO
-                moncod = ExtractCurrencyCode(extractedData), // ✅ MEJORADO: Detectar moneda
+                // ✅ CONDICIONES DE PAGO - DIRECTAS SIN OVERRIDES
+                consta = MapPaymentMethodCode(extractedPaymentMethod),
+                concuo = extractedCuotas,
+                moncod = ExtractCurrencyCode(extractedData),
 
                 // ✅ ESTADOS - CON VALORES POR DEFECTO CORRECTOS
-                congesti = "1",          // Estado gestión activo
-                congeses = "2",          // Estado específico por defecto
-                contra = "1",            // Trámite activo
-                convig = "1",            // Vigencia activa
+                congesti = "1",
+                congeses = "2",
+                contra = "1",
+                convig = "1",
 
                 // ✅ DATOS ADICIONALES - NOMBRES DESDE VELNEO
-                com_alias = companiaInfo?.comnom ?? "",      // ✅ Nombre de la compañía
-                ramo = seccionInfo?.seccion ?? "",           // ✅ Nombre de la sección
+                com_alias = companiaInfo?.comnom ?? "",
+                ramo = seccionInfo?.seccion ?? "",
 
                 // ✅ METADATOS
                 ingresado = DateTime.UtcNow,
@@ -238,6 +230,7 @@ namespace SegurosApp.API.Services
             _logger.LogInformation("  - request.conpremio: {Value}", request.conpremio);
             _logger.LogInformation("  - request.contot: {Value}", request.contot);
             _logger.LogInformation("  - request.concuo: {Value}", request.concuo);
+            _logger.LogInformation("  - request.consta: '{Value}'", request.consta);
             _logger.LogInformation("  - request.conmaraut: '{Value}'", request.conmaraut);
             _logger.LogInformation("  - request.conmodaut: '{Value}'", request.conmodaut);
             _logger.LogInformation("  - request.conanioaut: {Value}", request.conanioaut);
