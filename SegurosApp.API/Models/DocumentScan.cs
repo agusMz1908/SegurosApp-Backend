@@ -39,6 +39,22 @@ namespace SegurosApp.API.Models
         public bool IsDuplicate { get; set; }
         public int? ExistingScanId { get; set; }
 
+        [Column("cliente_id")]
+        public int? ClienteId { get; set; }
+
+        [Column("compania_id")]
+        public int? CompaniaId { get; set; }
+
+        [Column("seccion_id")]
+        public int? SeccionId { get; set; }
+
+        [MaxLength(500)]
+        [Column("preselection_notes")]
+        public string? PreSelectionNotes { get; set; }
+
+        [Column("preselection_saved_at")]
+        public DateTime? PreSelectionSavedAt { get; set; }
+
         // Info de Velneo
         [MaxLength(100)]
         public string? VelneoPolizaNumber { get; set; }

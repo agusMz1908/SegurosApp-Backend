@@ -1110,9 +1110,13 @@ namespace SegurosApp.API.Services
                 _logger.LogInformation("🚀 Creando póliza en Velneo: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
                     request.conpol, request.clinro, request.comcod, request.seccod);
 
+                // ✅ VALIDAR REQUEST ANTES DE ENVIAR
                 ValidateVelneoPolizaRequest(request);
 
+                // ✅ PREPARAR DATOS PARA VELNEO API
                 var velneoPayload = MapToVelneoApiFormat(request);
+
+                // ✅ LLAMADA A VELNEO API
                 var url = $"{BaseUrl}/polizas?api_key={ApiKey}";
 
                 var jsonPayload = JsonSerializer.Serialize(velneoPayload, new JsonSerializerOptions
@@ -1122,16 +1126,80 @@ namespace SegurosApp.API.Services
                 });
 
                 _logger.LogDebug("📤 Enviando a Velneo: {Url}", url);
-                _logger.LogDebug("📦 Payload: {Payload}", jsonPayload);
+
+                // ✅ DEBUG COMPLETO DEL PAYLOAD
+                _logger.LogInformation("📦 Payload completo enviado a Velneo:");
+                _logger.LogInformation("{Payload}", jsonPayload);
+
+                // ✅ DEBUG DE CAMPOS CRÍTICOS
+                _logger.LogInformation("🔧 Verificando campos críticos del payload:");
+                try
+                {
+                    var payloadDict = JsonSerializer.Deserialize<Dictionary<string, object>>(jsonPayload);
+                    if (payloadDict != null)
+                    {
+                        _logger.LogInformation("  - clienteId: {ClienteId}", payloadDict.GetValueOrDefault("clienteId", "NOT_FOUND"));
+                        _logger.LogInformation("  - numeroPoliza: '{NumeroPoliza}'", payloadDict.GetValueOrDefault("numeroPoliza", "NOT_FOUND"));
+                        _logger.LogInformation("  - fechaDesde: '{FechaDesde}'", payloadDict.GetValueOrDefault("fechaDesde", "NOT_FOUND"));
+                        _logger.LogInformation("  - fechaHasta: '{FechaHasta}'", payloadDict.GetValueOrDefault("fechaHasta", "NOT_FOUND"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("⚠️ Error parseando payload para debug: {Error}", ex.Message);
+                }
 
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                // ✅ AGREGAR HEADERS ADICIONALES
+                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+
                 var response = await _httpClient.PostAsync(url, content);
+
+                // ✅ DEBUG COMPLETO DE LA RESPUESTA
+                _logger.LogInformation("🔧 DEBUG Velneo Response:");
+                _logger.LogInformation("  - Status: {StatusCode} ({StatusName})", (int)response.StatusCode, response.StatusCode);
+                _logger.LogInformation("  - Content-Type: {ContentType}", response.Content.Headers.ContentType?.ToString() ?? "null");
+                _logger.LogInformation("  - Content-Length: {ContentLength}", response.Content.Headers.ContentLength?.ToString() ?? "null");
+
+                // ✅ LEER Y DEBUGGEAR EL CONTENIDO
+                var responseJson = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("  - Response Length: {Length}", responseJson?.Length ?? 0);
+                _logger.LogInformation("  - Response Content: '{Response}'", responseJson ?? "NULL");
+
+                // ✅ DEBUG DE HEADERS DE RESPUESTA
+                _logger.LogInformation("🔧 Response Headers:");
+                foreach (var header in response.Headers)
+                {
+                    _logger.LogInformation("  - {HeaderName}: {HeaderValue}", header.Key, string.Join(", ", header.Value));
+                }
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseJson = await response.Content.ReadAsStringAsync();
-                    _logger.LogDebug("📥 Respuesta Velneo: {Response}", responseJson);
+                    if (string.IsNullOrWhiteSpace(responseJson))
+                    {
+                        _logger.LogError("❌ Velneo respondió con contenido vacío pero status 200");
+                        _logger.LogError("❌ Esto indica que el API de Velneo no está funcionando correctamente");
 
+                        return new CreatePolizaResponse
+                        {
+                            Success = false,
+                            Message = "Velneo respondió con contenido vacío (status 200)",
+                            VelneoPolizaId = null,
+                            PolizaId = null,
+                            PolizaNumber = "",
+                            Validation = new ValidationResult
+                            {
+                                IsValid = false,
+                                Errors = new List<string> {
+                            "Respuesta vacía de Velneo",
+                            "El API de Velneo puede estar mal configurado o con problemas"
+                        }
+                            }
+                        };
+                    }
+
+                    // ✅ INTENTAR PARSEAR LA RESPUESTA
                     var velneoResponse = ParseVelneoResponse(responseJson);
 
                     _logger.LogInformation("✅ Póliza creada exitosamente en Velneo: ID={VelneoId}, Número={PolicyNumber}",
@@ -1142,7 +1210,7 @@ namespace SegurosApp.API.Services
                         Success = true,
                         Message = "Póliza creada exitosamente en Velneo",
                         VelneoPolizaId = velneoResponse.VelneoPolizaId,
-                        PolizaId = velneoResponse.VelneoPolizaId, 
+                        PolizaId = velneoResponse.VelneoPolizaId,
                         PolizaNumber = velneoResponse.PolizaNumber,
                         CreatedAt = DateTime.UtcNow,
                         VelneoUrl = GenerateVelneoUrl(velneoResponse.VelneoPolizaId),
@@ -1155,20 +1223,20 @@ namespace SegurosApp.API.Services
                 }
                 else
                 {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error en Velneo API: {StatusCode} - {Error}", response.StatusCode, errorContent);
+                    _logger.LogError("❌ Error HTTP de Velneo: {StatusCode}", response.StatusCode);
+                    _logger.LogError("❌ Response Content: {Content}", responseJson);
 
                     return new CreatePolizaResponse
                     {
                         Success = false,
-                        Message = $"Error en Velneo: {response.StatusCode}",
+                        Message = $"Error HTTP en Velneo: {response.StatusCode}",
                         VelneoPolizaId = null,
-                        PolizaId = null, 
+                        PolizaId = null,
                         PolizaNumber = "",
                         Validation = new ValidationResult
                         {
                             IsValid = false,
-                            Errors = new List<string> { $"Velneo API Error: {errorContent}" }
+                            Errors = new List<string> { $"HTTP {response.StatusCode}: {responseJson}" }
                         }
                     };
                 }
@@ -1296,41 +1364,48 @@ namespace SegurosApp.API.Services
         {
             return new
             {
-                cliente_id = request.clinro,
-                compania_id = request.comcod,
-                seccion_id = request.seccod,
+                // ✅ IDS PRINCIPALES - NOMBRES CORRECTOS DEL SCHEMA VELNEO
+                clinro = request.clinro,
+                comcod = request.comcod,
+                seccod = request.seccod,
 
-                numero_poliza = request.conpol,
-                endoso = request.conend,
-                fecha_desde = request.confchdes,
-                fecha_hasta = request.confchhas,
-                premio = request.conpremio,
-                total = request.contot,
+                // ✅ DATOS DE PÓLIZA - NOMBRES CORRECTOS
+                conpol = request.conpol,
+                conend = request.conend,
+                confchdes = request.confchdes,
+                confchhas = request.confchhas,
+                conpremio = request.conpremio,
+                contot = request.contot,
 
-                marca_vehiculo = request.conmaraut,
-                modelo_vehiculo = request.conmodaut,
-                ano_vehiculo = request.conanioaut,
-                motor = request.conmotor,
-                chasis = request.conchasis,
+                // ✅ DATOS VEHÍCULO - NOMBRES CORRECTOS
+                conmaraut = request.conmaraut,
+                conmodaut = request.conmodaut,
+                conanioaut = request.conanioaut,
+                conmotor = request.conmotor,
+                conchasis = request.conchasis,
 
-                departamento_id = request.dptnom,
-                combustible_codigo = request.combustibles,
-                destino_id = request.desdsc,
-                categoria_id = request.catdsc,
-                calidad_id = request.caldsc,
-                tarifa_id = request.tarcod,
+                // ✅ MASTER DATA IDS - NOMBRES CORRECTOS
+                dptnom = request.dptnom,
+                combustibles = request.combustibles,
+                desdsc = request.desdsc,
+                catdsc = request.catdsc,
+                caldsc = request.caldsc,
+                tarcod = request.tarcod,
 
-                forma_pago = request.consta,
-                cantidad_cuotas = request.concuo,
+                // ✅ FORMA DE PAGO - NOMBRES CORRECTOS
+                consta = request.consta,
+                concuo = request.concuo,
 
-                estado_gestion = request.congesti,
-                tramite = request.contra,
-                vigencia = request.convig,
-                moneda_codigo = request.moncod,
+                // ✅ ESTADOS - NOMBRES CORRECTOS
+                congesti = request.congesti,
+                contra = request.contra,
+                convig = request.convig,
+                moncod = request.moncod,
 
-                fecha_ingreso = request.ingresado.ToString("yyyy-MM-dd HH:mm:ss"),
-                ultima_actualizacion = request.last_update.ToString("yyyy-MM-dd HH:mm:ss"),
-                aplicacion_id = request.app_id,
+                // ✅ METADATOS - NOMBRES CORRECTOS
+                ingresado = request.ingresado.ToString("yyyy-MM-dd HH:mm:ss"),
+                last_update = request.last_update.ToString("yyyy-MM-dd HH:mm:ss"),
+                app_id = request.app_id,
                 observaciones = request.observaciones
             };
         }

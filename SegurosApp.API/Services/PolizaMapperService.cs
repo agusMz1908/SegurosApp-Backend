@@ -96,52 +96,90 @@ namespace SegurosApp.API.Services
             }
         }
 
-        /// <summary>
-        /// 🚀 NUEVO: Crear request Velneo desde scan con contexto
-        /// </summary>
         public async Task<VelneoPolizaRequest> CreateVelneoRequestFromScanAsync(
             int scanId,
             int userId,
             CreatePolizaVelneoRequest? overrides = null)
         {
-            _logger.LogInformation("🚀 Creando request Velneo para scan {ScanId}", scanId);
+            _logger.LogInformation("🚀 Creando request Velneo para scan {ScanId}, usuario {UserId}", scanId, userId);
 
-            // ✅ OBTENER DATOS DEL SCAN
+            // ✅ OBTENER DATOS DEL SCAN CON CONTEXTO
             var scan = await _context.DocumentScans
                 .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
 
             if (scan == null)
             {
+                _logger.LogError("❌ Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
                 throw new ArgumentException($"Scan {scanId} no encontrado para usuario {userId}");
             }
+
+            // ✅ DEBUG: VERIFICAR QUE EL SCAN TENGA LOS DATOS
+            _logger.LogInformation("🔧 DEBUG: Scan encontrado - FileName={FileName}, UserId={UserId}", scan.FileName, scan.UserId);
+            _logger.LogInformation("🔧 DEBUG: Valores BD - ClienteId={ClienteId}, CompaniaId={CompaniaId}, SeccionId={SeccionId}",
+                scan.ClienteId, scan.CompaniaId, scan.SeccionId);
 
             var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
 
-            // ✅ CREAR REQUEST BASE
+            // ✅ OBTENER CONTEXTO CON LÓGICA CORREGIDA
+            var contextClienteId = GetValueWithOverride(overrides?.ClienteId, scan.ClienteId, "ClienteId");
+            var contextCompaniaId = GetValueWithOverride(overrides?.CompaniaId, scan.CompaniaId, "CompaniaId");
+            var contextSeccionId = GetValueWithOverride(overrides?.SeccionId, scan.SeccionId, "SeccionId");
+
+            _logger.LogInformation("📋 Contexto final: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                contextClienteId, contextCompaniaId, contextSeccionId);
+
+            // ✅ DEBUG: VERIFICAR OVERRIDES
+            if (overrides != null)
+            {
+                _logger.LogInformation("🔧 DEBUG: Overrides recibidos - ClienteId={ClienteId}, CompaniaId={CompaniaId}, SeccionId={SeccionId}",
+                    overrides.ClienteId, overrides.CompaniaId, overrides.SeccionId);
+            }
+            else
+            {
+                _logger.LogInformation("🔧 DEBUG: No se recibieron overrides");
+            }
+
+            // ✅ VALIDAR QUE TENEMOS EL CONTEXTO
+            if (contextClienteId == 0 || contextCompaniaId == 0 || contextSeccionId == 0)
+            {
+                _logger.LogError("❌ Contexto incompleto en scan {ScanId}: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                    scanId, contextClienteId, contextCompaniaId, contextSeccionId);
+                throw new ValidationException($"Contexto incompleto en scan {scanId}: Cliente={contextClienteId}, Compañía={contextCompaniaId}, Sección={contextSeccionId}");
+            }
+
+            // ✅ DEBUG: EXTRAER Y DEBUGGEAR FECHAS
+            var rawStartDate = ExtractStartDate(extractedData);
+            var rawEndDate = ExtractEndDate(extractedData);
+            var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
+            var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
+
+            _logger.LogInformation("🔧 DEBUG FECHAS - Raw Start: '{RawStart}' -> Formatted: '{FormattedStart}'", rawStartDate, formattedStartDate);
+            _logger.LogInformation("🔧 DEBUG FECHAS - Raw End: '{RawEnd}' -> Formatted: '{FormattedEnd}'", rawEndDate, formattedEndDate);
+
             var request = new VelneoPolizaRequest
             {
-                // IDs del contexto (deben venir de overrides o estar guardados en scan)
-                clinro = overrides?.ClienteId ?? 0,
-                comcod = overrides?.CompaniaId ?? 0,
-                seccod = overrides?.SeccionId ?? 0,
+                // ✅ IDs DEL CONTEXTO GUARDADO
+                clinro = contextClienteId,
+                comcod = contextCompaniaId,
+                seccod = contextSeccionId,
 
-                // ✅ DATOS DE PÓLIZA (con overrides)
-                conpol = overrides?.PolicyNumberOverride ?? ExtractPolicyNumber(extractedData),
+                // ✅ DATOS DE PÓLIZA - SIN LITERAL "string"
+                conpol = ExtractPolicyNumber(extractedData),
                 conend = ExtractEndorsement(extractedData),
-                confchdes = overrides?.StartDateOverride ?? ExtractStartDate(extractedData),
-                confchhas = overrides?.EndDateOverride ?? ExtractEndDate(extractedData),
+                confchdes = GetStringValueWithOverride(overrides?.StartDateOverride, formattedStartDate, "FechaInicio"),
+                confchhas = GetStringValueWithOverride(overrides?.EndDateOverride, formattedEndDate, "FechaFin"),
                 conpremio = (int)(overrides?.PremiumOverride ?? ExtractPremium(extractedData)),
                 contot = (int)(overrides?.PremiumOverride ?? ExtractTotalAmount(extractedData)),
 
-                // ✅ DATOS VEHÍCULO (con overrides)
-                conmaraut = overrides?.VehicleBrandOverride ?? ExtractVehicleBrand(extractedData),
-                conmodaut = overrides?.VehicleModelOverride ?? ExtractVehicleModel(extractedData),
+                // ✅ DATOS VEHÍCULO - EXTRAER VALORES REALES
+                conmaraut = ExtractVehicleBrand(extractedData),
+                conmodaut = ExtractVehicleModel(extractedData),
                 conanioaut = overrides?.VehicleYearOverride ?? ExtractVehicleYear(extractedData),
-                conmotor = overrides?.MotorNumberOverride ?? ExtractMotorNumber(extractedData),
-                conchasis = overrides?.ChassisNumberOverride ?? ExtractChassisNumber(extractedData),
+                conmotor = ExtractMotorNumber(extractedData),
+                conchasis = ExtractChassisNumber(extractedData),
 
-                // ✅ MAPEOS A MASTER DATA (con overrides o mapeo automático)
+                // ✅ MAPEOS A MASTER DATA (usar valores por defecto válidos si no se encuentran)
                 dptnom = overrides?.DepartmentIdOverride ?? await FindDepartmentIdAsync(extractedData),
                 combustibles = overrides?.FuelCodeOverride ?? await FindFuelCodeAsync(extractedData),
                 desdsc = overrides?.DestinationIdOverride ?? await FindDestinationIdAsync(extractedData),
@@ -150,24 +188,162 @@ namespace SegurosApp.API.Services
                 tarcod = overrides?.TariffIdOverride ?? await FindTariffIdAsync(extractedData),
 
                 // ✅ FORMA DE PAGO
-                consta = MapPaymentMethodCode(overrides?.PaymentMethodOverride ?? ExtractPaymentMethod(extractedData)),
+                consta = MapPaymentMethodCode(ExtractPaymentMethod(extractedData)),
                 concuo = overrides?.InstallmentCountOverride ?? ExtractInstallmentCount(extractedData),
 
                 // ✅ METADATOS
                 app_id = scanId,
-                observaciones = $"Generado desde escaneo automático. {overrides?.Notes ?? ""}".Trim()
+                observaciones = $"Generado desde escaneo automático. {overrides?.Notes ?? scan.PreSelectionNotes ?? ""}".Trim()
             };
+
+            // ✅ AGREGAR LOG PARA VERIFICAR QUE LOS VALORES NO SEAN "string"
+            _logger.LogInformation("🔧 DEBUG: Verificando valores extraídos:");
+            _logger.LogInformation("  - conmaraut: '{Value}'", request.conmaraut);
+            _logger.LogInformation("  - conmodaut: '{Value}'", request.conmodaut);
+            _logger.LogInformation("  - conanioaut: {Value}", request.conanioaut);
+            _logger.LogInformation("  - conpremio: {Value}", request.conpremio);
+            _logger.LogInformation("  - contot: {Value}", request.contot);
+
+            // ✅ DEBUG: MOSTRAR VALORES FINALES ANTES DE VALIDAR
+            _logger.LogInformation("🔧 DEBUG REQUEST - Póliza: '{Poliza}', Fechas: '{FechaInicio}' a '{FechaFin}'",
+                request.conpol, request.confchdes, request.confchhas);
 
             // ✅ VALIDAR REQUEST
             await ValidateVelneoRequest(request);
 
-            _logger.LogInformation("✅ Request Velneo creado: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}",
-                request.conpol, request.clinro, request.comcod);
+            _logger.LogInformation("✅ Request Velneo creado: Póliza={PolicyNumber}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                request.conpol, request.clinro, request.comcod, request.seccod);
 
             return request;
         }
 
+        private int GetValueWithOverride(int? overrideValue, int? dbValue, string fieldName)
+        {
+            if (overrideValue.HasValue && overrideValue.Value > 0)
+            {
+                _logger.LogDebug("🔧 Usando override para {FieldName}: {Value}", fieldName, overrideValue.Value);
+                return overrideValue.Value;
+            }
+
+            var result = dbValue ?? 0;
+            _logger.LogDebug("🔧 Usando BD para {FieldName}: {Value}", fieldName, result);
+            return result;
+        }
+
+        private string GetStringValueWithOverride(string? overrideValue, string defaultValue, string fieldName)
+        {
+            // ✅ SI OVERRIDE ES VÁLIDO (no null, no empty, no literal "string")
+            if (!string.IsNullOrEmpty(overrideValue) &&
+                overrideValue != "string" &&
+                overrideValue.Trim() != "string")
+            {
+                _logger.LogDebug("🔧 Usando override para {FieldName}: '{Value}'", fieldName, overrideValue);
+                return overrideValue.Trim();
+            }
+
+            _logger.LogDebug("🔧 Usando valor por defecto para {FieldName}: '{Value}'", fieldName, defaultValue);
+            return defaultValue;
+        }
+
         #region Mapeo de Datos Básicos
+
+        private string ConvertToVelneoDateFormat(string dateStr)
+        {
+            _logger.LogDebug("🔧 ConvertToVelneoDateFormat input: '{DateStr}'", dateStr);
+
+            if (string.IsNullOrEmpty(dateStr))
+            {
+                var today = DateTime.Today.ToString("yyyy-MM-dd");
+                _logger.LogWarning("⚠️ Fecha vacía, usando hoy: {Today}", today);
+                return today;
+            }
+
+            try
+            {
+                // ✅ LIMPIAR FECHA PRIMERO
+                var cleanDate = dateStr.Trim();
+
+                // ✅ SI YA ESTÁ EN FORMATO CORRECTO
+                if (DateTime.TryParseExact(cleanDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var alreadyFormatted))
+                {
+                    _logger.LogDebug("✅ Fecha ya en formato correcto: {Date}", cleanDate);
+                    return cleanDate;
+                }
+
+                // ✅ INTENTAR FORMATOS COMUNES
+                var formats = new[]
+                {
+            "dd/MM/yyyy",   // 22/03/2024
+            "MM/dd/yyyy",   // 03/22/2024
+            "dd-MM-yyyy",   // 22-03-2024
+            "yyyy/MM/dd",   // 2024/03/22
+            "dd/MM/yy",     // 22/03/24
+            "MM/dd/yy",     // 03/22/24
+            "yyyyMMdd",     // 20240322
+            "dd.MM.yyyy",   // 22.03.2024
+            "yyyy-M-d",     // 2024-3-22
+            "d/M/yyyy"      // 22/3/2024
+        };
+
+                foreach (var format in formats)
+                {
+                    if (DateTime.TryParseExact(cleanDate, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
+                    {
+                        var result = parsedDate.ToString("yyyy-MM-dd");
+                        _logger.LogDebug("✅ Fecha convertida de '{Format}': {Input} -> {Output}", format, cleanDate, result);
+                        return result;
+                    }
+                }
+
+                // ✅ FALLBACK: PARSEO FLEXIBLE
+                if (DateTime.TryParse(cleanDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var flexibleDate))
+                {
+                    var result = flexibleDate.ToString("yyyy-MM-dd");
+                    _logger.LogDebug("✅ Fecha parseada flexible: {Input} -> {Output}", cleanDate, result);
+                    return result;
+                }
+
+                // ✅ INTENTAR EXTRAER NÚMEROS
+                var numbers = System.Text.RegularExpressions.Regex.Matches(cleanDate, @"\d+");
+                if (numbers.Count >= 3)
+                {
+                    var day = int.Parse(numbers[0].Value);
+                    var month = int.Parse(numbers[1].Value);
+                    var year = int.Parse(numbers[2].Value);
+
+                    // ✅ AJUSTAR AÑO SI ES DE 2 DÍGITOS
+                    if (year < 100)
+                    {
+                        year += (year < 30) ? 2000 : 1900;
+                    }
+
+                    // ✅ INTERCAMBIAR SI EL DÍA ES > 12 (probablemente formato MM/dd)
+                    if (day > 12 && month <= 12)
+                    {
+                        (day, month) = (month, day);
+                    }
+
+                    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+                    {
+                        var extractedDate = new DateTime(year, month, day);
+                        var result = extractedDate.ToString("yyyy-MM-dd");
+                        _logger.LogDebug("✅ Fecha extraída por números: {Input} -> {Output}", cleanDate, result);
+                        return result;
+                    }
+                }
+
+                _logger.LogError("❌ No se pudo parsear fecha: '{DateStr}'", dateStr);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error parseando fecha '{DateStr}'", dateStr);
+            }
+
+            // ✅ ÚLTIMO RECURSO: FECHA ACTUAL
+            var fallback = DateTime.Today.ToString("yyyy-MM-dd");
+            _logger.LogWarning("⚠️ Usando fecha fallback: {Fallback}", fallback);
+            return fallback;
+        }
 
         private async Task<PolizaDataMapped> MapBasicPolizaDataAsync(
             Dictionary<string, object> extractedData,
@@ -435,19 +611,310 @@ namespace SegurosApp.API.Services
             Dictionary<string, object> extractedData,
             CriticalFieldsStatus criticalStatus)
         {
-            var totalFields = 20; 
+            // ✅ CATEGORIZAR CAMPOS POR TIPO
+            var policyFields = CategorizePolicyFields(mappedData, extractedData);
+            var vehicleFields = CategorizeVehicleFields(mappedData, extractedData);
+            var financialFields = CategorizeFinancialFields(mappedData, extractedData);
+            var clientFields = CategorizeClientFields(mappedData, extractedData);
+            var masterDataFields = CategorizeMasterDataFields(mappedData, extractedData);
+            var optionalFields = CategorizeOptionalFields(mappedData, extractedData);
+
+            // ✅ CALCULAR MÉTRICAS GENERALES
+            var totalFieldsExpected = 20; // Campos críticos esperados
             var mappedFields = CountMappedFields(mappedData);
+            var overallCompletionPercentage = (decimal)mappedFields / totalFieldsExpected * 100;
+
+            // ✅ CALCULAR MÉTRICAS DE PERFORMANCE
+            var performanceMetrics = new PerformanceMetrics
+            {
+                ProcessingTimeMs = 1000, // Placeholder - obtener del contexto real
+                ValidationTimeMs = 200,
+                MasterDataLookupTimeMs = 300,
+                TotalMappingTimeMs = 1500,
+                FieldsPerSecond = mappedFields > 0 ? (decimal)mappedFields / 1.5m : 0,
+                AutoMappingSuccessRate = (decimal)mappedFields / extractedData.Count * 100,
+                ManualReviewRequired = 0,
+            };
+
+            // ✅ CALCULAR BREAKDOWN DE CONFIANZA
+            var confidenceBreakdown = CalculateConfidenceBreakdown(mappedData, extractedData);
 
             return new MappingMetrics
             {
                 TotalFieldsScanned = extractedData.Count,
                 FieldsMappedSuccessfully = mappedFields,
-                FieldsWithIssues = 0, 
+                FieldsWithIssues = 0, // Calculado en IdentifyFieldsRequiringAttention
                 FieldsRequireAttention = 0,
                 OverallConfidence = criticalStatus.CriticalFieldsCompleteness,
                 MappingQuality = DetermineMappingQuality(criticalStatus.CriticalFieldsCompleteness),
                 MissingCriticalFields = criticalStatus.MissingCritical,
-                OverallCompletionPercentage = (decimal)mappedFields / totalFields * 100
+                OverallCompletionPercentage = overallCompletionPercentage,
+
+                // ✅ BREAKDOWN DETALLADO POR CATEGORÍAS
+                FieldsByCategory = new CategoryBreakdown
+                {
+                    PolicyFields = policyFields,
+                    VehicleFields = vehicleFields,
+                    FinancialFields = financialFields,
+                    ClientFields = clientFields,
+                    MasterDataFields = masterDataFields,
+                    OptionalFields = optionalFields
+                },
+
+                Performance = performanceMetrics,
+                Confidence = confidenceBreakdown,
+                Suggestions = GenerateImprovementSuggestions(mappedData, extractedData)
+            };
+        }
+
+        private CategoryMetric CategorizePolicyFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var policyFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
+    {
+        { "NumeroPoliza", (!string.IsNullOrEmpty(mappedData.NumeroPoliza), true) },
+        { "Endoso", (!string.IsNullOrEmpty(mappedData.Endoso), false) },
+        { "FechaDesde", (!string.IsNullOrEmpty(mappedData.FechaDesde), true) },
+        { "FechaHasta", (!string.IsNullOrEmpty(mappedData.FechaHasta), true) },
+        { "TipoMovimiento", (!string.IsNullOrEmpty(mappedData.TipoMovimiento), false) }
+    };
+
+            return CalculateCategoryMetric(policyFieldsMap, "Póliza");
+        }
+
+        /// <summary>
+        /// 🚗 Categorizar campos de vehículo
+        /// </summary>
+        private CategoryMetric CategorizeVehicleFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var vehicleFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
+    {
+        { "VehiculoMarca", (!string.IsNullOrEmpty(mappedData.VehiculoMarca), true) },
+        { "VehiculoModelo", (!string.IsNullOrEmpty(mappedData.VehiculoModelo), true) },
+        { "VehiculoAño", (mappedData.VehiculoAño > 0, true) },
+        { "VehiculoMotor", (!string.IsNullOrEmpty(mappedData.VehiculoMotor), false) },
+        { "VehiculoChasis", (!string.IsNullOrEmpty(mappedData.VehiculoChasis), false) },
+        { "VehiculoCombustible", (!string.IsNullOrEmpty(mappedData.VehiculoCombustible), false) },
+        { "VehiculoDestino", (!string.IsNullOrEmpty(mappedData.VehiculoDestino), false) },
+        { "VehiculoCategoria", (!string.IsNullOrEmpty(mappedData.VehiculoCategoria), false) }
+    };
+
+            return CalculateCategoryMetric(vehicleFieldsMap, "Vehículo");
+        }
+
+        /// <summary>
+        /// 💰 Categorizar campos financieros
+        /// </summary>
+        private CategoryMetric CategorizeFinancialFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var financialFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
+    {
+        { "Premio", (mappedData.Premio > 0, true) },
+        { "MontoTotal", (mappedData.MontoTotal > 0, false) },
+        { "MedioPago", (!string.IsNullOrEmpty(mappedData.MedioPago), false) },
+        { "CantidadCuotas", (mappedData.CantidadCuotas > 0, false) }
+    };
+
+            return CalculateCategoryMetric(financialFieldsMap, "Financiero");
+        }
+
+        /// <summary>
+        /// 👤 Categorizar campos de cliente
+        /// </summary>
+        private CategoryMetric CategorizeClientFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var clientFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
+    {
+        { "AseguradoNombre", (!string.IsNullOrEmpty(mappedData.AseguradoNombre), true) },
+        { "AseguradoDocumento", (!string.IsNullOrEmpty(mappedData.AseguradoDocumento), true) },
+        { "AseguradoDepartamento", (!string.IsNullOrEmpty(mappedData.AseguradoDepartamento), false) },
+        { "AseguradoDireccion", (!string.IsNullOrEmpty(mappedData.AseguradoDireccion), false) }
+    };
+
+            return CalculateCategoryMetric(clientFieldsMap, "Cliente");
+        }
+
+        /// <summary>
+        /// 🗂️ Categorizar campos de master data
+        /// </summary>
+        private CategoryMetric CategorizeMasterDataFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            // Estos campos requieren mapeo a IDs específicos de Velneo
+            var masterDataFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
+    {
+        { "Departamento", (extractedData.ContainsKey("asegurado.departamento"), false) },
+        { "Combustible", (!string.IsNullOrEmpty(mappedData.VehiculoCombustible), false) },
+        { "Destino", (!string.IsNullOrEmpty(mappedData.VehiculoDestino), false) },
+        { "Categoria", (!string.IsNullOrEmpty(mappedData.VehiculoCategoria), false) }
+    };
+
+            return CalculateCategoryMetric(masterDataFieldsMap, "Master Data");
+        }
+
+        /// <summary>
+        /// 📄 Categorizar campos opcionales
+        /// </summary>
+        private CategoryMetric CategorizeOptionalFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var optionalFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
+    {
+        { "CorredorNombre", (!string.IsNullOrEmpty(mappedData.CorredorNombre), false) },
+        { "CorredorNumero", (!string.IsNullOrEmpty(mappedData.CorredorNumero), false) },
+        { "Moneda", (!string.IsNullOrEmpty(mappedData.Moneda), false) }
+    };
+
+            return CalculateCategoryMetric(optionalFieldsMap, "Opcional");
+        }
+
+        /// <summary>
+        /// 📊 Calcular métrica de categoría
+        /// </summary>
+        private CategoryMetric CalculateCategoryMetric(Dictionary<string, (bool IsMapped, bool IsCritical)> fieldsMap, string categoryName)
+        {
+            var totalFields = fieldsMap.Count;
+            var mappedFields = fieldsMap.Count(f => f.Value.IsMapped);
+            var criticalFields = fieldsMap.Where(f => f.Value.IsCritical);
+            var criticalMissing = criticalFields.Where(f => !f.Value.IsMapped).Select(f => f.Key).ToList();
+            var successfullyMapped = fieldsMap.Where(f => f.Value.IsMapped).Select(f => f.Key).ToList();
+
+            var completionPercentage = totalFields > 0 ? (decimal)mappedFields / totalFields * 100 : 0;
+
+            return new CategoryMetric
+            {
+                TotalFields = totalFields,
+                MappedFields = mappedFields,
+                MissingFields = totalFields - mappedFields,
+                CompletionPercentage = completionPercentage,
+                AverageConfidence = mappedFields > 0 ? 85.0m : 0, // Placeholder - calcular real
+                CriticalMissing = criticalMissing,
+                SuccessfullyMapped = successfullyMapped
+            };
+        }
+
+        /// <summary>
+        /// 🔍 Calcular breakdown de confianza
+        /// </summary>
+        private ConfidenceBreakdown CalculateConfidenceBreakdown(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var allFields = new[]
+            {
+        ("NumeroPoliza", !string.IsNullOrEmpty(mappedData.NumeroPoliza), 95m),
+        ("FechaDesde", !string.IsNullOrEmpty(mappedData.FechaDesde), 90m),
+        ("FechaHasta", !string.IsNullOrEmpty(mappedData.FechaHasta), 90m),
+        ("VehiculoMarca", !string.IsNullOrEmpty(mappedData.VehiculoMarca), 88m),
+        ("VehiculoModelo", !string.IsNullOrEmpty(mappedData.VehiculoModelo), 85m),
+        ("Premio", mappedData.Premio > 0, 92m),
+        ("VehiculoAño", mappedData.VehiculoAño > 0, 95m)
+    };
+
+            var mappedFieldsWithConfidence = allFields.Where(f => f.Item2).ToList();
+
+            var exactMatches = mappedFieldsWithConfidence.Where(f => f.Item3 >= 90m).ToList();
+            var highConfidence = mappedFieldsWithConfidence.Where(f => f.Item3 >= 75m && f.Item3 < 90m).ToList();
+            var mediumConfidence = mappedFieldsWithConfidence.Where(f => f.Item3 >= 50m && f.Item3 < 75m).ToList();
+            var lowConfidence = mappedFieldsWithConfidence.Where(f => f.Item3 >= 25m && f.Item3 < 50m).ToList();
+            var veryLowConfidence = mappedFieldsWithConfidence.Where(f => f.Item3 < 25m).ToList();
+
+            var totalMapped = mappedFieldsWithConfidence.Count;
+            var weightedAverage = totalMapped > 0 ? mappedFieldsWithConfidence.Average(f => f.Item3) : 0;
+
+            return new ConfidenceBreakdown
+            {
+                ExactMatches = new ConfidenceLevel
+                {
+                    FieldCount = exactMatches.Count,
+                    Percentage = totalMapped > 0 ? (decimal)exactMatches.Count / totalMapped * 100 : 0,
+                    FieldNames = exactMatches.Select(f => f.Item1).ToList(),
+                    AverageConfidence = exactMatches.Any() ? exactMatches.Average(f => f.Item3) : 0
+                },
+                HighConfidence = new ConfidenceLevel
+                {
+                    FieldCount = highConfidence.Count,
+                    Percentage = totalMapped > 0 ? (decimal)highConfidence.Count / totalMapped * 100 : 0,
+                    FieldNames = highConfidence.Select(f => f.Item1).ToList(),
+                    AverageConfidence = highConfidence.Any() ? highConfidence.Average(f => f.Item3) : 0
+                },
+                MediumConfidence = new ConfidenceLevel
+                {
+                    FieldCount = mediumConfidence.Count,
+                    Percentage = totalMapped > 0 ? (decimal)mediumConfidence.Count / totalMapped * 100 : 0,
+                    FieldNames = mediumConfidence.Select(f => f.Item1).ToList(),
+                    AverageConfidence = mediumConfidence.Any() ? mediumConfidence.Average(f => f.Item3) : 0
+                },
+                LowConfidence = new ConfidenceLevel
+                {
+                    FieldCount = lowConfidence.Count,
+                    Percentage = totalMapped > 0 ? (decimal)lowConfidence.Count / totalMapped * 100 : 0,
+                    FieldNames = lowConfidence.Select(f => f.Item1).ToList(),
+                    AverageConfidence = lowConfidence.Any() ? lowConfidence.Average(f => f.Item3) : 0
+                },
+                VeryLowConfidence = new ConfidenceLevel
+                {
+                    FieldCount = veryLowConfidence.Count,
+                    Percentage = totalMapped > 0 ? (decimal)veryLowConfidence.Count / totalMapped * 100 : 0,
+                    FieldNames = veryLowConfidence.Select(f => f.Item1).ToList(),
+                    AverageConfidence = veryLowConfidence.Any() ? veryLowConfidence.Average(f => f.Item3) : 0
+                },
+                WeightedAverageConfidence = weightedAverage,
+                OverallConfidenceLevel = DetermineOverallConfidenceLevel(weightedAverage)
+            };
+        }
+
+        private List<ImprovementSuggestion> GenerateImprovementSuggestions(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
+        {
+            var suggestions = new List<ImprovementSuggestion>();
+
+            if (string.IsNullOrEmpty(mappedData.VehiculoMotor))
+            {
+                suggestions.Add(new ImprovementSuggestion
+                {
+                    Category = "Vehículo",
+                    Title = "Mejorar extracción de número de motor",
+                    Description = "El número de motor no se está extrayendo consistentemente",
+                    Priority = "Medium",
+                    ActionType = "DocumentQuality",
+                    SpecificFields = new List<string> { "VehiculoMotor" },
+                    PotentialImprovement = 15m
+                });
+            }
+
+            if (string.IsNullOrEmpty(mappedData.VehiculoCombustible))
+            {
+                suggestions.Add(new ImprovementSuggestion
+                {
+                    Category = "Master Data",
+                    Title = "Mapeo automático de combustible",
+                    Description = "Implementar mapeo automático de tipos de combustible a códigos Velneo",
+                    Priority = "High",
+                    ActionType = "Configuration",
+                    SpecificFields = new List<string> { "VehiculoCombustible" },
+                    PotentialImprovement = 20m
+                });
+            }
+
+            return suggestions;
+        }
+
+        private string DeterminePerformanceLevel(int totalTimeMs)
+        {
+            return totalTimeMs switch
+            {
+                < 1000 => "Muy Rápido",
+                < 3000 => "Rápido",
+                < 5000 => "Normal",
+                < 10000 => "Lento",
+                _ => "Muy Lento"
+            };
+        }
+
+        private string DetermineOverallConfidenceLevel(decimal averageConfidence)
+        {
+            return averageConfidence switch
+            {
+                >= 90m => "Muy Alta",
+                >= 75m => "Alta",
+                >= 60m => "Media",
+                >= 40m => "Baja",
+                _ => "Muy Baja"
             };
         }
 

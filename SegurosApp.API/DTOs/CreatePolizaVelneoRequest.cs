@@ -6,7 +6,6 @@
         public int ClienteId { get; set; }
         public int CompaniaId { get; set; }
         public int SeccionId { get; set; }
-        public string? PolicyNumberOverride { get; set; }
         public string? StartDateOverride { get; set; }
         public string? EndDateOverride { get; set; }
         public decimal? PremiumOverride { get; set; }

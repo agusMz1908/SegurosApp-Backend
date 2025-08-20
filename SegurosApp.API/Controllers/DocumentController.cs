@@ -1,9 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SegurosApp.API.Data;
 using SegurosApp.API.DTOs;
 using SegurosApp.API.DTOs.Velneo.Item;
-using SegurosApp.API.DTOs.Velneo.Response;
 using SegurosApp.API.DTOs.Velneo.Request;
+using SegurosApp.API.DTOs.Velneo.Response;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Services;
 using System.Security.Claims;
@@ -18,17 +20,20 @@ namespace SegurosApp.API.Controllers
         private readonly IAzureDocumentService _azureDocumentService;
         private readonly IVelneoMasterDataService _masterDataService;
         private readonly PolizaMapperService _polizaMapperService;
+        private readonly AppDbContext _context;
         private readonly ILogger<DocumentController> _logger;
 
         public DocumentController(
             IAzureDocumentService azureDocumentService,
             IVelneoMasterDataService masterDataService,
             PolizaMapperService polizaMapperService,
+            AppDbContext context,
             ILogger<DocumentController> logger)
         {
             _azureDocumentService = azureDocumentService;
             _masterDataService = masterDataService;
             _polizaMapperService = polizaMapperService;
+            _context = context;
             _logger = logger;
         }
 
@@ -102,7 +107,8 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                // ✅ PASO 3: MAPEAR A PÓLIZA CON CONTEXTO
+                await SaveContextToScanAsync(scanResult.ScanId, clienteId, companiaId, seccionId, notes);
+
                 var polizaMapping = await _polizaMapperService.MapToPolizaWithContextAsync(
                     scanResult.ExtractedData,
                     new PreSelectionContext
@@ -1141,6 +1147,35 @@ namespace SegurosApp.API.Controllers
                 return null;
             }
             return userId;
+        }
+
+        private async Task SaveContextToScanAsync(int scanId, int clienteId, int companiaId, int seccionId, string? notes)
+        {
+            try
+            {
+                var scan = await _context.DocumentScans.FindAsync(scanId);
+                if (scan == null)
+                {
+                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para guardar contexto", scanId);
+                    return;
+                }
+
+                scan.ClienteId = clienteId;
+                scan.CompaniaId = companiaId;
+                scan.SeccionId = seccionId;
+                scan.PreSelectionNotes = notes;
+                scan.PreSelectionSavedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("✅ Contexto guardado en scan {ScanId}: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                    scanId, clienteId, companiaId, seccionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error guardando contexto en scan {ScanId}", scanId);
+                throw;
+            }
         }
     }
 }
