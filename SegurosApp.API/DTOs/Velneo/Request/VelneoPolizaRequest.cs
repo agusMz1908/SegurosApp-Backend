@@ -38,9 +38,10 @@
         public int corrnom { get; set; } = 0;         // Corredor ID
 
         // ✅ CONDICIONES DE PAGO
-        public string consta { get; set; } = "T";     // Forma pago (T=Tarjeta, 1=Contado, etc.)
+        public string consta { get; set; } = "";     // Forma pago (T=Tarjeta, 1=Contado, etc.)
         public int concuo { get; set; } = 1;          // Número de cuotas
-        public int moncod { get; set; } = 858;        // Moneda (858=UYU, 840=USD)
+        public int moncod { get; set; } = 0;        // Moneda (858=UYU, 840=USD)
+        public int? conviamon { get; set; }
 
         // ✅ ESTADOS
         public string congesti { get; set; } = "1";   // Estado gestión

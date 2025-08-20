@@ -30,6 +30,9 @@
         public int? CategoryIdOverride { get; set; }
         public int? QualityIdOverride { get; set; }
         public int? TariffIdOverride { get; set; }
+        public int? BrokerIdOverride { get; set; }          // Corredor → corrnom
+        public int? CurrencyIdOverride { get; set; }        // Moneda principal → moncod  
+        public int? PaymentCurrencyIdOverride { get; set; }
 
         // ✅ OVERRIDES DE CLIENTE - NUEVOS
         public string? ClientNameOverride { get; set; }

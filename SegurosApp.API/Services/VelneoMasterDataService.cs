@@ -298,6 +298,44 @@ namespace SegurosApp.API.Services
             return new List<TarifaItem>();
         }
 
+        public async Task<List<MonedaItem>> GetMonedasAsync()
+        {
+            const string cacheKey = "velneo_monedas";
+
+            if (_cache.TryGetValue(cacheKey, out List<MonedaItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                var url = $"{BaseUrl}/monedas?api_key={ApiKey}";
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoMonedaResponse>(json,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    var monedas = velneoResponse?.monedas ?? new List<MonedaItem>();
+
+                    _cache.Set(cacheKey, monedas, TimeSpan.FromHours(2));
+
+                    _logger.LogInformation("✅ Monedas obtenidas: {Count}", monedas.Count);
+                    return monedas;
+                }
+                else
+                {
+                    _logger.LogError("❌ Error al obtener monedas: {StatusCode}", response.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción al obtener monedas");
+            }
+
+            return new List<MonedaItem>();
+        }
+
         public async Task<List<CompaniaItem>> GetCompaniasAsync()
         {
             const string cacheKey = "velneo_companias";
@@ -789,12 +827,12 @@ namespace SegurosApp.API.Services
 
         public async Task<CompleteMasterDataResponse> GetAllMasterDataAsync()
         {
-            const string cacheKey = "velneo_all_master_data_v3"; 
+            const string cacheKey = "velneo_complete_master_data";
 
             if (_cache.TryGetValue(cacheKey, out CompleteMasterDataResponse? cached) && cached != null)
                 return cached;
 
-            _logger.LogInformation("🔄 Obteniendo master data completo desde Velneo (incluye clientes/compañías/secciones reales)...");
+            _logger.LogInformation("🔄 Obteniendo master data completo desde Velneo...");
 
             try
             {
@@ -807,11 +845,12 @@ namespace SegurosApp.API.Services
                 var tarifasTask = GetTarifasAsync();
                 var companiasTask = GetCompaniasAsync();
                 var seccionesTask = GetSeccionesAsync();
+                var monedasTask = GetMonedasAsync();  
 
                 await Task.WhenAll(
                     departamentosTask, combustiblesTask, corredoresTask,
                     categoriasTask, destinosTask, calidadesTask, tarifasTask,
-                    companiasTask, seccionesTask
+                    companiasTask, seccionesTask, monedasTask  
                 );
 
                 var result = new CompleteMasterDataResponse
@@ -825,6 +864,7 @@ namespace SegurosApp.API.Services
                     Tarifas = await tarifasTask,
                     Companias = await companiasTask,
                     Secciones = await seccionesTask,
+                    Monedas = await monedasTask,  
 
                     EstadosGestion = GetEstadosGestion(),
                     Tramites = GetTramites(),
@@ -834,33 +874,17 @@ namespace SegurosApp.API.Services
 
                 _cache.Set(cacheKey, result, TimeSpan.FromHours(1));
 
-                _logger.LogInformation("✅ Master data completo obtenido desde Velneo: {CompaniasCount} compañías, {SeccionesCount} secciones",
-                    result.Companias.Count, result.Secciones.Count);
+                _logger.LogInformation("✅ Master data completo obtenido: {CompaniasCount} compañías, {SeccionesCount} secciones, {MonedasCount} monedas",
+                    result.Companias.Count, result.Secciones.Count, result.Monedas.Count);
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo master data completo desde Velneo");
-
-                return new CompleteMasterDataResponse
-                {
-                    Departamentos = new(),
-                    Combustibles = new(),
-                    Corredores = new(),
-                    Categorias = new(),
-                    Destinos = new(),
-                    Calidades = new(),
-                    Tarifas = new(),
-                    Companias = new(),
-                    Secciones = new(),
-                    EstadosGestion = GetEstadosGestion(),
-                    Tramites = GetTramites(),
-                    EstadosPoliza = GetEstadosPoliza(),
-                    FormasPago = GetFormasPago()
-                };
+                _logger.LogError(ex, "❌ Error obteniendo master data completo");
+                throw;
             }
         }
-   
+
         private List<StaticOption> GetEstadosGestion()
         {
             return new List<StaticOption>
@@ -1533,9 +1557,6 @@ namespace SegurosApp.API.Services
             return string.Join(" ", parts);
         }
 
-        /// <summary>
-        /// Mapea el estado de gestión de texto a número según la lista de opciones de Velneo
-        /// </summary>
         private string MapEstadoGestion(string? estado)
         {
             if (string.IsNullOrWhiteSpace(estado)) return "1"; // Por defecto "Pendiente"
@@ -1559,7 +1580,6 @@ namespace SegurosApp.API.Services
             };
         }
 
-        // ✅ MÉTODOS AUXILIARES PARA LIMPIAR DATOS
         private string ExtractMotorCode(string? motorFull)
         {
             if (string.IsNullOrWhiteSpace(motorFull)) return "";

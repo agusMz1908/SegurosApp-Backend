@@ -17,6 +17,7 @@ namespace SegurosApp.API.DTOs.Velneo.Response
         public List<StaticOption> Tramites { get; set; } = new();
         public List<StaticOption> EstadosPoliza { get; set; } = new();
         public List<StaticOption> FormasPago { get; set; } = new();
+        public List<MonedaItem> Monedas { get; set; } = new();
     }
 
     public class StaticOption

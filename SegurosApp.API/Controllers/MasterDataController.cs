@@ -542,6 +542,21 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+        [HttpGet("monedas")]
+        public async Task<ActionResult<List<MonedaItem>>> GetMonedas()
+        {
+            try
+            {
+                var monedas = await _masterDataService.GetMonedasAsync();
+                return Ok(monedas);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo monedas");
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
+
         [HttpGet("health")]
         public async Task<ActionResult> HealthCheck()
         {

@@ -14,6 +14,7 @@ namespace SegurosApp.API.Interfaces
         Task<List<DestinoItem>> GetDestinosAsync();
         Task<List<CalidadItem>> GetCalidadesAsync();
         Task<List<TarifaItem>> GetTarifasAsync();
+        Task<List<MonedaItem>> GetMonedasAsync();
         Task<CompleteMasterDataResponse> GetAllMasterDataAsync();
         Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue);
         Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue);

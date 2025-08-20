@@ -201,12 +201,13 @@ namespace SegurosApp.API.Services
                 catdsc = overrides?.CategoryIdOverride ?? await FindCategoryIdAsync(extractedData),
                 caldsc = overrides?.QualityIdOverride ?? await FindQualityIdAsync(extractedData),
                 tarcod = overrides?.TariffIdOverride ?? await FindTariffIdAsync(extractedData),
-                corrnom = ExtractBrokerId(extractedData),
+                corrnom = overrides?.BrokerIdOverride ?? ExtractCorredorId(extractedData),
 
                 // ✅ CONDICIONES DE PAGO - DIRECTAS SIN OVERRIDES
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = extractedCuotas,
-                moncod = ExtractCurrencyCode(extractedData),
+                moncod = overrides?.CurrencyIdOverride ?? ExtractCurrencyCode(extractedData),
+                conviamon = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(extractedData),
 
                 // ✅ ESTADOS - CON VALORES POR DEFECTO CORRECTOS
                 congesti = "1",
@@ -270,31 +271,43 @@ namespace SegurosApp.API.Services
 
         private int ExtractBeneficiaryId(Dictionary<string, object> data)
         {
-            // Por ahora retornar 0, se puede implementar lógica específica
             return 0;
         }
 
-        private int ExtractBrokerId(Dictionary<string, object> data)
+        private int ExtractCorredorId(Dictionary<string, object> data)
         {
-            // Por ahora retornar 0, se puede implementar lógica específica
             return 0;
         }
 
         private int ExtractCurrencyCode(Dictionary<string, object> data)
         {
             var possibleFields = new[] { "moneda", "currency", "divisa" };
+
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
                 {
                     var normalized = value.ToUpper();
-                    if (normalized.Contains("USD") || normalized.Contains("DOLAR"))
-                        return 840; // USD
-                    if (normalized.Contains("UYU") || normalized.Contains("PESO"))
-                        return 858; // UYU
+
+                    // 🆕 MAPEO CON IDs REALES DE VELNEO
+                    if (normalized.Contains("USD") || normalized.Contains("DOLAR") || normalized.Contains("DOL"))
+                        return 2; // DOL (Dólar Americano)
+
+                    if (normalized.Contains("UYU") || normalized.Contains("PESO") || normalized.Contains("PES"))
+                        return 1; // PES (Peso Uruguayo)
+
+                    if (normalized.Contains("EUR") || normalized.Contains("EURO") || normalized.Contains("EU"))
+                        return 4; // EU (Euro)
+
+                    if (normalized.Contains("REAL") || normalized.Contains("BRL") || normalized.Contains("RS"))
+                        return 3; // RS (Reales)
+
+                    if (normalized.Contains("UF") || normalized.Contains("UNIDAD"))
+                        return 5; // UF (Unidad de Fomento)
                 }
             }
-            return 858; // Por defecto UYU
+
+            return 1;
         }
 
         private int GetValueWithOverride(int? overrideValue, int? dbValue, string fieldName)
@@ -1354,7 +1367,11 @@ namespace SegurosApp.API.Services
         private string ExtractPaymentMethod(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "pago.forma", "forma_pago", "payment_method", "metodo_pago"
+        "pago.medio",          
+        "pago.forma",
+        "forma_pago",
+        "payment_method",
+        "metodo_pago"
     };
             return GetFirstValidValue(data, possibleFields);
         }
@@ -1513,11 +1530,15 @@ namespace SegurosApp.API.Services
             var normalized = paymentMethod.ToUpper();
             return normalized switch
             {
-                var x when x.Contains("TARJETA") || x.Contains("CREDITO") => "T",
-                var x when x.Contains("CONTADO") || x.Contains("EFECTIVO") => "1",
-                var x when x.Contains("DEBITO") || x.Contains("BANCARIO") => "B",
-                var x when x.Contains("TRANSFERENCIA") => "B",
-                _ => "1" // Default: Contado
+                var x when x.Contains("CONTADO") || x.Contains("EFECTIVO") => "1",     // Efectivo
+                var x when x.Contains("TARJETA") || x.Contains("CREDITO") => "2",      // Tarjeta Cred.
+                var x when x.Contains("DEBITO") || x.Contains("BANCARIO") => "3",      // Debito Banc.
+                var x when x.Contains("COBRADOR") => "4",                              // Cobrador
+                var x when x.Contains("CONFORME") => "5",                              // Conforme
+                var x when x.Contains("CHEQUE") => "6",                                // Cheque diferido
+                var x when x.Contains("TRANSFERENCIA") => "7",                         // Transferencia bancaria
+                var x when x.Contains("PASS") || x.Contains("CARD") => "8",            // Pass Card
+                _ => "1" // Default: Efectivo
             };
         }
 
