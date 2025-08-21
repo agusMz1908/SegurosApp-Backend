@@ -42,6 +42,6 @@ namespace SegurosApp.API.Models
 
         public User User { get; set; } = null!;
         public PricingTiers AppliedTier { get; set; } = null!;
-        public List<BillingItem> BillingItems { get; set; } = new();
+        public List<BillingItems> BillingItems { get; set; } = new();
     }
 }

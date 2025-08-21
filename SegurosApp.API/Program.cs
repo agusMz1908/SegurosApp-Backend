@@ -76,6 +76,7 @@ builder.Services.AddScoped<IVelneoMasterDataService, VelneoMasterDataService>();
 builder.Services.AddScoped<DocumentFieldParser>();
 builder.Services.AddScoped<PolizaMapperService>();
 builder.Services.AddScoped<PricingService>();
+builder.Services.AddScoped<BillingService>();
 
 builder.Services.AddHttpClient<VelneoMasterDataService>();
 

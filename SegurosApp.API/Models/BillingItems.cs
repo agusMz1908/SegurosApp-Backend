@@ -2,7 +2,7 @@
 
 namespace SegurosApp.API.Models
 {
-    public class BillingItem
+    public class BillingItems
     {
         public int Id { get; set; }
         public int MonthlyBillingId { get; set; }

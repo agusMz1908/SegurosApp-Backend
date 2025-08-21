@@ -14,6 +14,8 @@ namespace SegurosApp.API.Data
         public DbSet<DailyMetrics> DailyMetrics { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<PricingTiers> PricingTiers { get; set; }
+        public DbSet<MonthlyBilling> MonthlyBilling { get; set; }
+        public DbSet<BillingItems> BillingItems { get; set; }
 
     }
 }
