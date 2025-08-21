@@ -60,7 +60,6 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                // ✅ VALIDAR PRE-SELECCIÓN
                 if (clienteId <= 0 || companiaId <= 0 || seccionId <= 0)
                 {
                     return BadRequest(new DocumentScanWithContextResponse
@@ -83,7 +82,6 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("📄 Upload con contexto iniciado: {FileName} - Cliente:{ClienteId}, Compañía:{CompaniaId}, Sección:{SeccionId}",
                     file.FileName, clienteId, companiaId, seccionId);
 
-                // ✅ PASO 1: VALIDAR QUE EXISTAN LOS IDs EN VELNEO
                 var validationResult = await ValidatePreSelectionAsync(clienteId, companiaId, seccionId);
                 if (!validationResult.IsValid)
                 {
@@ -95,7 +93,6 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                // ✅ PASO 2: PROCESAR DOCUMENTO CON AZURE
                 var scanResult = await _azureDocumentService.ProcessDocumentAsync(file, userId.Value);
                 if (!scanResult.Success)
                 {
@@ -122,7 +119,6 @@ namespace SegurosApp.API.Controllers
                     }
                 );
 
-                // ✅ PASO 4: RESPUESTA COMPLETA
                 var response = new DocumentScanWithContextResponse
                 {
                     Success = true,
@@ -322,32 +318,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        private async Task<ValidationStatsDto> GetValidationStatsAsync(int userId, DateTime fromDate, DateTime toDate)
-        {
-            try
-            {
-                return new ValidationStatsDto
-                {
-                    TotalValidations = 0,
-                    SuccessfulValidations = 0,
-                    FailedValidations = 0,
-                    ClienteValidationFailures = 0,
-                    CompaniaValidationFailures = 0,
-                    SeccionValidationFailures = 0,
-                    ConnectivityIssues = 0,
-                    AverageValidationTimeMs = 0
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Error obteniendo estadísticas de validación");
-                return new ValidationStatsDto();
-            }
-        }
-
-        /// <summary>
-        /// 🚀 NUEVO: Crear póliza en Velneo con datos completos
-        /// </summary>
         [HttpPost("{scanId}/create-in-velneo")]
         [ProducesResponseType(typeof(CreatePolizaVelneoResponse), 200)]
         [ProducesResponseType(400)]
@@ -370,7 +340,6 @@ namespace SegurosApp.API.Controllers
 
                 _logger.LogInformation("🚀 Creando póliza en Velneo para scan {ScanId}", scanId);
 
-                // ✅ OBTENER DATOS DEL ESCANEO
                 var scanData = await _azureDocumentService.GetScanByIdAsync(scanId, userId.Value);
                 if (scanData == null)
                 {
@@ -381,15 +350,11 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                // ✅ CREAR REQUEST PARA VELNEO
                 var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value, overrides);
-
-                // ✅ ENVIAR A VELNEO
                 var velneoResult = await _masterDataService.CreatePolizaAsync(velneoRequest);
 
                 if (velneoResult.Success)
                 {
-                    // ✅ ACTUALIZAR SCAN CON REFERENCIA VELNEO
                     await _azureDocumentService.UpdateScanWithVelneoInfoAsync(
                         scanId,
                         velneoResult.VelneoPolizaId?.ToString(),
@@ -486,7 +451,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        // ✅ NUEVO: ENDPOINT DE MAPEO EN EL LUGAR CORRECTO
         [HttpPost("{scanId}/map-to-poliza")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
@@ -504,14 +468,12 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("🔄 Iniciando mapeo de póliza para scan {ScanId} - Usuario: {UserId}",
                     scanId, userId);
 
-                // Obtener datos del escaneo
                 var scanData = await _azureDocumentService.GetScanByIdAsync(scanId, userId.Value);
                 if (scanData == null)
                 {
                     return NotFound(new { success = false, message = "Documento escaneado no encontrado" });
                 }
 
-                // ✅ MAPEO BÁSICO POR AHORA - Luego mejoraremos
                 var response = new
                 {
                     success = true,
@@ -520,7 +482,6 @@ namespace SegurosApp.API.Controllers
                     extractedData = scanData.ExtractedData,
                     dataCount = scanData.ExtractedData.Count,
                     fieldsFound = scanData.ExtractedData.Keys.ToList(),
-                    // 🎯 CAMPOS PRINCIPALES IDENTIFICADOS
                     mainFields = ExtractMainFields(scanData.ExtractedData)
                 };
 
@@ -767,10 +728,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        // ===============================
-        // MÉTODOS PRIVADOS
-        // ===============================
-
         private object ExtractMainFields(Dictionary<string, object> extractedData)
         {
             return new
@@ -821,15 +778,10 @@ namespace SegurosApp.API.Controllers
         private string CleanPolicyNumber(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
-
-            // Buscar patrón de número de póliza (7-9 dígitos)
             var match = System.Text.RegularExpressions.Regex.Match(rawValue, @"\b(\d{7,9})\b");
             return match.Success ? match.Groups[1].Value : "";
         }
 
-        /// <summary>
-        /// Limpia endoso - extrae solo el número
-        /// </summary>
         private string CleanEndorsement(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "0";
@@ -838,21 +790,14 @@ namespace SegurosApp.API.Controllers
             return match.Success ? match.Groups[1].Value : "0";
         }
 
-        /// <summary>
-        /// Limpia fechas - extrae en formato dd/MM/yyyy
-        /// </summary>
         private string CleanDate(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
 
-            // Buscar patrón de fecha
             var match = System.Text.RegularExpressions.Regex.Match(rawValue, @"(\d{1,2})/(\d{1,2})/(\d{4})");
             return match.Success ? match.Value : "";
         }
 
-        /// <summary>
-        /// Limpia nombre de empresa - remueve etiquetas
-        /// </summary>
         private string CleanCompanyName(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -865,19 +810,12 @@ namespace SegurosApp.API.Controllers
                 .ToUpperInvariant();
         }
 
-        /// <summary>
-        /// Limpia número de documento - solo números
-        /// </summary>
         private string CleanDocumentNumber(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
 
             return System.Text.RegularExpressions.Regex.Replace(rawValue, @"[^\d]", "");
         }
-
-        /// <summary>
-        /// Limpia departamento - remueve etiquetas
-        /// </summary>
         private string CleanDepartment(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -890,10 +828,6 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia dirección
-        /// </summary>
         private string CleanAddress(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -904,10 +838,6 @@ namespace SegurosApp.API.Controllers
                 .Replace("\r", "")
                 .Trim();
         }
-
-        /// <summary>
-        /// Limpia localidad
-        /// </summary>
         private string CleanLocality(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -918,10 +848,6 @@ namespace SegurosApp.API.Controllers
                 .Replace("\r", "")
                 .Trim();
         }
-
-        /// <summary>
-        /// Limpia marca de vehículo
-        /// </summary>
         private string CleanVehicleBrand(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -933,10 +859,6 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia modelo de vehículo
-        /// </summary>
         private string CleanVehicleModel(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -947,10 +869,6 @@ namespace SegurosApp.API.Controllers
                 .Replace("\r", "")
                 .Trim();
         }
-
-        /// <summary>
-        /// Limpia año - extrae solo el año
-        /// </summary>
         private int CleanYear(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return 0;
@@ -959,9 +877,6 @@ namespace SegurosApp.API.Controllers
             return match.Success && int.TryParse(match.Groups[1].Value, out var year) ? year : 0;
         }
 
-        /// <summary>
-        /// Limpia número de motor
-        /// </summary>
         private string CleanMotorNumber(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -973,10 +888,6 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia número de chasis
-        /// </summary>
         private string CleanChassisNumber(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -989,10 +900,6 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia tipo de combustible
-        /// </summary>
         private string CleanFuelType(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -1004,10 +911,6 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia destino del vehículo
-        /// </summary>
         private string CleanDestination(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -1020,10 +923,6 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia categoría del vehículo
-        /// </summary>
         private string CleanCategory(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -1035,10 +934,6 @@ namespace SegurosApp.API.Controllers
                 .Replace("\r", "")
                 .Trim();
         }
-
-        /// <summary>
-        /// Limpia nombre del corredor
-        /// </summary>
         private string CleanBrokerName(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -1051,9 +946,6 @@ namespace SegurosApp.API.Controllers
                 .ToUpperInvariant();
         }
 
-        /// <summary>
-        /// Limpia número del corredor
-        /// </summary>
         private int CleanBrokerNumber(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return 0;
@@ -1062,9 +954,6 @@ namespace SegurosApp.API.Controllers
             return match.Success && int.TryParse(match.Groups[1].Value, out var number) ? number : 0;
         }
 
-        /// <summary>
-        /// Limpia medio de pago
-        /// </summary>
         private string CleanPaymentMethod(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -1077,9 +966,6 @@ namespace SegurosApp.API.Controllers
                 .ToUpperInvariant();
         }
 
-        /// <summary>
-        /// Extrae cantidad de cuotas
-        /// </summary>
         private int CleanInstallmentCount(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return 1;
@@ -1088,9 +974,6 @@ namespace SegurosApp.API.Controllers
             return match.Success && int.TryParse(match.Groups[1].Value, out var count) ? count : 1;
         }
 
-        /// <summary>
-        /// Limpia tipo de movimiento
-        /// </summary>
         private string CleanMovementType(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return "";
@@ -1102,21 +985,15 @@ namespace SegurosApp.API.Controllers
                 .Trim()
                 .ToUpperInvariant();
         }
-
-        /// <summary>
-        /// Limpia montos - extrae solo el número
-        /// </summary>
         private decimal CleanAmount(string rawValue)
         {
             if (string.IsNullOrEmpty(rawValue)) return 0;
-
-            // Buscar patrón de dinero: $ 63.812,36
             var match = System.Text.RegularExpressions.Regex.Match(rawValue, @"\$\s*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)");
             if (match.Success)
             {
                 var amountStr = match.Groups[1].Value
-                    .Replace(".", "")  // Quitar separadores de miles
-                    .Replace(",", "."); // Convertir coma decimal a punto
+                    .Replace(".", "")  
+                    .Replace(",", "."); 
 
                 return decimal.TryParse(amountStr, System.Globalization.NumberStyles.Currency,
                     System.Globalization.CultureInfo.InvariantCulture, out var amount) ? amount : 0;
@@ -1138,7 +1015,6 @@ namespace SegurosApp.API.Controllers
             }
             return "";
         }
-
         private int? GetCurrentUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

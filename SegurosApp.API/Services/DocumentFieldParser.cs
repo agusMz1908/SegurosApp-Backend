@@ -20,13 +20,11 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("🧠 Iniciando extracción inteligente de {CamposCount} campos", rawFields.Count);
 
-                // Convertir a Dictionary<string, string> para facilitar el procesamiento
                 var camposExtraidos = rawFields.ToDictionary(
                     kvp => kvp.Key,
                     kvp => kvp.Value?.ToString() ?? ""
                 );
 
-                // Procesar campos principales
                 processedData["numeroPoliza"] = ProcessPolicyNumber(camposExtraidos);
                 processedData["asegurado"] = ProcessInsuredName(camposExtraidos);
                 processedData["documento"] = ProcessDocument(camposExtraidos);
@@ -49,7 +47,6 @@ namespace SegurosApp.API.Services
                 processedData["plan"] = ProcessPlan(camposExtraidos);
                 processedData["corredor"] = ProcessBroker(camposExtraidos);
 
-                // Agregar campos originales no procesados
                 foreach (var field in rawFields)
                 {
                     if (!processedData.ContainsKey(field.Key))
@@ -66,7 +63,7 @@ namespace SegurosApp.API.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ Error procesando datos extraídos");
-                return rawFields; // Devolver datos originales en caso de error
+                return rawFields;
             }
         }
 
@@ -92,7 +89,6 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            // Buscar en texto libre usando regex
             foreach (var field in fields.Values)
             {
                 var text = field?.ToString() ?? "";
@@ -175,7 +171,6 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            // Intentar construir descripción desde marca + modelo + año
             var marca = ProcessBrand(fields);
             var modelo = ProcessModel(fields);
             var año = ProcessYear(fields);
@@ -323,7 +318,7 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            return "EMISION"; // Default
+            return "EMISION"; 
         }
 
         private string ProcessEndorsement(Dictionary<string, string> fields)
@@ -362,7 +357,7 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            return "1"; // Default
+            return "1"; 
         }
 
         private string ProcessBranch(Dictionary<string, string> fields)
@@ -412,7 +407,6 @@ namespace SegurosApp.API.Services
         {
             if (string.IsNullOrEmpty(text)) return "";
 
-            // Buscar patrones de nombre en texto estructurado
             var match = Regex.Match(text, @"(?:Nombre|Name|Asegurado):\s*([^:]+?)(?:\s+(?:Documento|Doc|CI|RUT):|$)", RegexOptions.IgnoreCase);
             if (match.Success)
             {
@@ -426,7 +420,6 @@ namespace SegurosApp.API.Services
         {
             if (string.IsNullOrEmpty(text)) return "";
 
-            // Buscar descripción de vehículo
             var match = Regex.Match(text, @"(?:Marca|MARCA):\s*([^:]+?)(?:\s+(?:Modelo|MODELO):\s*([^:]+?))?(?:\s+(?:Año|AÑO):\s*(\d{4}))?", RegexOptions.IgnoreCase);
             if (match.Success)
             {
@@ -476,14 +469,12 @@ namespace SegurosApp.API.Services
         {
             value = "";
 
-            // Buscar con el nombre exacto
             if (fields.TryGetValue(fieldName, out var exactValue))
             {
                 value = exactValue?.ToString()?.Trim() ?? "";
                 return !string.IsNullOrEmpty(value);
             }
 
-            // Buscar ignorando case
             var kvp = fields.FirstOrDefault(f =>
                 string.Equals(f.Key, fieldName, StringComparison.OrdinalIgnoreCase));
 
@@ -591,7 +582,6 @@ namespace SegurosApp.API.Services
         {
             if (string.IsNullOrEmpty(input)) return "";
 
-            // Intentar varios formatos de fecha
             var formats = new[]
             {
                 "dd/MM/yyyy", "MM/dd/yyyy", "yyyy-MM-dd", "yyyy/MM/dd",
@@ -607,7 +597,6 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            // Intentar parsing genérico
             if (DateTime.TryParse(input.Trim(), out var genericDate))
             {
                 return genericDate.ToString("yyyy-MM-dd");
@@ -620,10 +609,8 @@ namespace SegurosApp.API.Services
         {
             if (string.IsNullOrEmpty(input)) return "";
 
-            // Remover símbolos de moneda y espacios
             var cleaned = Regex.Replace(input, @"[^\d\.,\-]", "").Trim();
 
-            // Intentar parsear como decimal
             if (decimal.TryParse(cleaned, NumberStyles.Currency,
                 CultureInfo.CurrentCulture, out var amount))
             {

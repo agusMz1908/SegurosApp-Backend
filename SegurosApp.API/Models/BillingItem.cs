@@ -21,7 +21,6 @@ namespace SegurosApp.API.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation properties
         public MonthlyBilling MonthlyBilling { get; set; } = null!;
         public DocumentScan DocumentScan { get; set; } = null!;
     }

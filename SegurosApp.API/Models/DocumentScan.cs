@@ -55,21 +55,17 @@ namespace SegurosApp.API.Models
         [Column("preselection_saved_at")]
         public DateTime? PreSelectionSavedAt { get; set; }
 
-        // Info de Velneo
         [MaxLength(100)]
         public string? VelneoPolizaNumber { get; set; }
         public bool VelneoCreated { get; set; }
 
-        // Facturación
         public bool IsBillable { get; set; } = true;
         public bool IsBilled { get; set; }
         public DateTime? BilledAt { get; set; }
 
-        // Timestamps
         public DateTime CreatedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
 
-        // Navigation properties
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;
     }

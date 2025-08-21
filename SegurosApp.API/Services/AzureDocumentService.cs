@@ -34,11 +34,6 @@ namespace SegurosApp.API.Services
             var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
             var modelId = _configuration["AzureDocumentIntelligence:ModelId"];
 
-            _logger.LogInformation("🔧 DEBUG - Azure Configuration:");
-            _logger.LogInformation("🔧 Endpoint: '{Endpoint}'", endpoint);
-            _logger.LogInformation("🔧 ApiKey length: {Length}", apiKey?.Length ?? 0);
-            _logger.LogInformation("🔧 ModelId: '{ModelId}'", modelId);
-
             if (string.IsNullOrEmpty(endpoint) || endpoint.Contains("PLACEHOLDER"))
             {
                 _logger.LogError("❌ Azure Endpoint es placeholder o vacío. Usando modo mock.");
@@ -849,7 +844,6 @@ namespace SegurosApp.API.Services
                 var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(extractedDataJson);
                 if (data == null) return "";
 
-                // Buscar en varios campos posibles
                 var possibleFields = new[] { "poliza.numero", "numeroPoliza", "datos_poliza" };
 
                 foreach (var field in possibleFields)

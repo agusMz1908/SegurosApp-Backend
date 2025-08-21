@@ -27,9 +27,6 @@ namespace SegurosApp.API.Services
             _logger = logger;
         }
 
-        /// <summary>
-        /// 🎯 NUEVO: Mapear con contexto de pre-selección
-        /// </summary>
         public async Task<PolizaMappingWithContextResponse> MapToPolizaWithContextAsync(
             Dictionary<string, object> extractedData,
             PreSelectionContext context)
@@ -41,30 +38,22 @@ namespace SegurosApp.API.Services
 
             try
             {
-                // ✅ PASO 1: MAPEAR DATOS BÁSICOS
                 var mappedData = await MapBasicPolizaDataAsync(extractedData, context);
                 response.MappedData = mappedData;
 
-                // ✅ PASO 2: VALIDAR CAMPOS CRÍTICOS
                 var criticalValidation = ValidateCriticalFields(mappedData, extractedData);
 
-                // ✅ PASO 3: GENERAR SUGERENCIAS AUTOMÁTICAS
                 var suggestions = await GenerateAutoSuggestionsAsync(extractedData, mappedData);
                 response.AutoSuggestions = suggestions;
 
-                // ✅ PASO 4: IDENTIFICAR CAMPOS QUE REQUIEREN ATENCIÓN
                 var requiresAttention = IdentifyFieldsRequiringAttention(mappedData, extractedData);
                 response.RequiresAttention = requiresAttention;
 
-                // ✅ PASO 5: CALCULAR COMPLETITUD
                 var metrics = CalculateMappingMetrics(mappedData, extractedData, criticalValidation);
                 response.MappingMetrics = metrics;
                 response.CompletionPercentage = metrics.OverallCompletionPercentage;
 
-                // ✅ PASO 6: DETERMINAR SI ESTÁ LISTO
                 response.IsComplete = DetermineIfComplete(mappedData, criticalValidation, requiresAttention);
-
-                // ✅ PASO 7: CAMPOS CONFIRMADOS POR PRE-SELECCIÓN
                 response.ConfirmedByPreSelection = new List<string>
                 {
                     "cliente", "compania", "seccion"
@@ -104,7 +93,6 @@ namespace SegurosApp.API.Services
         {
             _logger.LogInformation("🚀 Creando request Velneo para scan {ScanId}, usuario {UserId}", scanId, userId);
 
-            // ✅ OBTENER DATOS DEL SCAN CON CONTEXTO
             var scan = await _context.DocumentScans
                 .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
 
@@ -117,12 +105,10 @@ namespace SegurosApp.API.Services
             var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
 
-            // ✅ OBTENER CONTEXTO
             var contextClienteId = GetValueWithOverride(overrides?.ClienteId, scan.ClienteId, "ClienteId");
             var contextCompaniaId = GetValueWithOverride(overrides?.CompaniaId, scan.CompaniaId, "CompaniaId");
             var contextSeccionId = GetValueWithOverride(overrides?.SeccionId, scan.SeccionId, "SeccionId");
 
-            // ✅ OBTENER DATOS DEL CLIENTE DESDE VELNEO
             ClienteItem? clienteInfo = null;
             CompaniaItem? companiaInfo = null;
             SeccionItem? seccionInfo = null;
@@ -131,11 +117,9 @@ namespace SegurosApp.API.Services
             {
                 clienteInfo = await _masterDataService.GetClienteDetalleAsync(contextClienteId);
 
-                // Obtener información de la compañía
                 var companias = await _masterDataService.GetCompaniasAsync();
                 companiaInfo = companias.FirstOrDefault(c => c.id == contextCompaniaId);
 
-                // Obtener información de la sección
                 var secciones = await _masterDataService.GetSeccionesAsync(contextCompaniaId);
                 seccionInfo = secciones.FirstOrDefault(s => s.id == contextSeccionId);
             }
@@ -144,13 +128,11 @@ namespace SegurosApp.API.Services
                 _logger.LogWarning("⚠️ Error obteniendo información de maestros: {Error}", ex.Message);
             }
 
-            // ✅ DEBUG: EXTRAER Y DEBUGGEAR FECHAS
             var rawStartDate = ExtractStartDate(extractedData);
             var rawEndDate = ExtractEndDate(extractedData);
             var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
             var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
 
-            // ✅ DEBUG: EXTRAER MONTOS Y CUOTAS DIRECTAMENTE (SIN OVERRIDES)
             _logger.LogInformation("🔍 DEBUG: Extrayendo montos y cuotas directamente...");
 
             var extractedPremium = ExtractPremium(extractedData);
@@ -166,35 +148,24 @@ namespace SegurosApp.API.Services
 
             var request = new VelneoPolizaRequest
             {
-                // ✅ IDs DEL CONTEXTO GUARDADO
                 clinro = contextClienteId,
                 comcod = contextCompaniaId,
                 seccod = contextSeccionId,
-
-                // ✅ DATOS DE PÓLIZA
                 conpol = ExtractPolicyNumber(extractedData),
                 conend = ExtractEndorsement(extractedData),
                 confchdes = GetStringValueWithOverride(overrides?.StartDateOverride, formattedStartDate, "FechaInicio"),
                 confchhas = GetStringValueWithOverride(overrides?.EndDateOverride, formattedEndDate, "FechaFin"),
-
-                // ✅ MONTOS - DIRECTOS SIN OVERRIDES
                 conpremio = (int)Math.Round(extractedPremium),
                 contot = (int)Math.Round(extractedTotal),
-
-                // ✅ DATOS DEL VEHÍCULO - MANTENER OVERRIDES PARA ESTOS
                 conmaraut = GetStringValueWithOverride(overrides?.VehicleBrandOverride, ExtractVehicleBrand(extractedData), "MarcaVehiculo"),
                 conmodaut = GetStringValueWithOverride(overrides?.VehicleModelOverride, ExtractVehicleModel(extractedData), "ModeloVehiculo"),
                 conanioaut = overrides?.VehicleYearOverride ?? ExtractVehicleYear(extractedData),
                 conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, ExtractMotorNumber(extractedData), "NumeroMotor"),
                 conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, ExtractChassisNumber(extractedData), "NumeroChasis"),
                 conmataut = ExtractVehiclePlate(extractedData),
-
-                // ✅ DATOS DEL CLIENTE - NUEVOS CAMPOS
                 clinom = clienteInfo?.clinom ?? "",
                 condom = clienteInfo?.clidir ?? ExtractClientAddress(extractedData),
                 clinro1 = ExtractBeneficiaryId(extractedData),
-
-                // ✅ MASTER DATA IDS - MANTENER OVERRIDES PARA ESTOS
                 dptnom = overrides?.DepartmentIdOverride ?? await FindDepartmentIdAsync(extractedData),
                 combustibles = overrides?.FuelCodeOverride ?? await FindFuelCodeAsync(extractedData),
                 desdsc = overrides?.DestinationIdOverride ?? await FindDestinationIdAsync(extractedData),
@@ -202,61 +173,30 @@ namespace SegurosApp.API.Services
                 caldsc = overrides?.QualityIdOverride ?? await FindQualityIdAsync(extractedData),
                 tarcod = overrides?.TariffIdOverride ?? await FindTariffIdAsync(extractedData),
                 corrnom = overrides?.BrokerIdOverride ?? ExtractCorredorId(extractedData),
-
-                // ✅ CONDICIONES DE PAGO - DIRECTAS SIN OVERRIDES
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = extractedCuotas,
                 moncod = overrides?.CurrencyIdOverride ?? ExtractCurrencyCode(extractedData),
                 conviamon = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(extractedData),
-
-                // ✅ ESTADOS - CON VALORES POR DEFECTO CORRECTOS
                 congesti = "1",
                 congeses = "2",
                 contra = "1",
                 convig = "1",
-
-                // ✅ DATOS ADICIONALES - NOMBRES DESDE VELNEO
                 com_alias = companiaInfo?.comnom ?? "",
                 ramo = seccionInfo?.seccion ?? "",
-
-                // ✅ METADATOS
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = scanId,
                 observaciones = FormatObservations(overrides?.Notes, overrides?.UserComments)
             };
 
-            // ✅ DEBUG: VERIFICAR VALORES FINALES EN EL REQUEST
-            _logger.LogInformation("🔧 DEBUG: Verificando valores FINALES en el request:");
-            _logger.LogInformation("  - request.conpremio: {Value}", request.conpremio);
-            _logger.LogInformation("  - request.contot: {Value}", request.contot);
-            _logger.LogInformation("  - request.concuo: {Value}", request.concuo);
-            _logger.LogInformation("  - request.consta: '{Value}'", request.consta);
-            _logger.LogInformation("  - request.conmaraut: '{Value}'", request.conmaraut);
-            _logger.LogInformation("  - request.conmodaut: '{Value}'", request.conmodaut);
-            _logger.LogInformation("  - request.conanioaut: {Value}", request.conanioaut);
-            _logger.LogInformation("  - request.clinom: '{Value}'", request.clinom);
-            _logger.LogInformation("  - request.condom: '{Value}'", request.condom);
-            _logger.LogInformation("  - request.moncod: {Value}", request.moncod);
-            _logger.LogInformation("  - request.com_alias: '{Value}'", request.com_alias);
-            _logger.LogInformation("  - request.ramo: '{Value}'", request.ramo);
-            _logger.LogInformation("  - request.congeses: '{Value}'", request.congeses);
-
-            _logger.LogInformation("🔧 DEBUG REQUEST - Póliza: '{Policy}', Fechas: '{StartDate}' a '{EndDate}'",
-                request.conpol, request.confchdes, request.confchhas);
-
             await ValidateVelneoRequest(request);
-            _logger.LogInformation("✅ Request Velneo validado exitosamente");
-            _logger.LogInformation("✅ Request Velneo creado: Póliza={Policy}, Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
-                request.conpol, request.clinro, request.comcod, request.seccod);
-
             return request;
         }
 
         private string ExtractVehiclePlate(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "vehiculo.matricula", "matricula", "MATRICULA", "placa", "patente"
+                "vehiculo.matricula", "matricula", "MATRICULA", "placa", "patente"
             };
             return GetFirstValidValue(data, possibleFields);
         }
@@ -264,8 +204,8 @@ namespace SegurosApp.API.Services
         private string ExtractClientAddress(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "cliente.direccion", "direccion", "DIRECCION", "domicilio", "address"
-    };
+                "cliente.direccion", "direccion", "DIRECCION", "domicilio", "address"
+            };
             return GetFirstValidValue(data, possibleFields);
         }
 
@@ -289,21 +229,20 @@ namespace SegurosApp.API.Services
                 {
                     var normalized = value.ToUpper();
 
-                    // 🆕 MAPEO CON IDs REALES DE VELNEO
                     if (normalized.Contains("USD") || normalized.Contains("DOLAR") || normalized.Contains("DOL"))
-                        return 2; // DOL (Dólar Americano)
+                        return 2; 
 
                     if (normalized.Contains("UYU") || normalized.Contains("PESO") || normalized.Contains("PES"))
-                        return 1; // PES (Peso Uruguayo)
+                        return 1; 
 
                     if (normalized.Contains("EUR") || normalized.Contains("EURO") || normalized.Contains("EU"))
-                        return 4; // EU (Euro)
+                        return 4; 
 
                     if (normalized.Contains("REAL") || normalized.Contains("BRL") || normalized.Contains("RS"))
-                        return 3; // RS (Reales)
+                        return 3; 
 
                     if (normalized.Contains("UF") || normalized.Contains("UNIDAD"))
-                        return 5; // UF (Unidad de Fomento)
+                        return 5; 
                 }
             }
 
@@ -323,14 +262,6 @@ namespace SegurosApp.API.Services
             return result;
         }
 
-        private string ExtractCompanyAlias(Dictionary<string, object> data)
-        {
-            var possibleFields = new[] {
-        "compania.alias", "alias_compania", "company_alias"
-    };
-            return GetFirstValidValue(data, possibleFields);
-        }
-
         private string FormatObservations(string? notes, string? userComments)
         {
             var parts = new List<string> { "Generado desde escaneo automático." };
@@ -346,7 +277,6 @@ namespace SegurosApp.API.Services
 
         private string GetStringValueWithOverride(string? overrideValue, string defaultValue, string fieldName)
         {
-            // ✅ SI OVERRIDE ES VÁLIDO (no null, no empty, no literal "string")
             if (!string.IsNullOrEmpty(overrideValue) &&
                 overrideValue != "string" &&
                 overrideValue.Trim() != "string")
@@ -374,30 +304,26 @@ namespace SegurosApp.API.Services
 
             try
             {
-                // ✅ LIMPIAR FECHA PRIMERO
                 var cleanDate = dateStr.Trim();
-
-                // ✅ SI YA ESTÁ EN FORMATO CORRECTO
                 if (DateTime.TryParseExact(cleanDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var alreadyFormatted))
                 {
                     _logger.LogDebug("✅ Fecha ya en formato correcto: {Date}", cleanDate);
                     return cleanDate;
                 }
 
-                // ✅ INTENTAR FORMATOS COMUNES
                 var formats = new[]
                 {
-            "dd/MM/yyyy",   // 22/03/2024
-            "MM/dd/yyyy",   // 03/22/2024
-            "dd-MM-yyyy",   // 22-03-2024
-            "yyyy/MM/dd",   // 2024/03/22
-            "dd/MM/yy",     // 22/03/24
-            "MM/dd/yy",     // 03/22/24
-            "yyyyMMdd",     // 20240322
-            "dd.MM.yyyy",   // 22.03.2024
-            "yyyy-M-d",     // 2024-3-22
-            "d/M/yyyy"      // 22/3/2024
-        };
+                    "dd/MM/yyyy",   
+                    "MM/dd/yyyy",   
+                    "dd-MM-yyyy",   
+                    "yyyy/MM/dd",
+                    "dd/MM/yy",     
+                    "MM/dd/yy",    
+                    "yyyyMMdd",    
+                    "dd.MM.yyyy",   
+                    "yyyy-M-d",     
+                    "d/M/yyyy"  
+                };
 
                 foreach (var format in formats)
                 {
@@ -409,7 +335,6 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // ✅ FALLBACK: PARSEO FLEXIBLE
                 if (DateTime.TryParse(cleanDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var flexibleDate))
                 {
                     var result = flexibleDate.ToString("yyyy-MM-dd");
@@ -417,7 +342,6 @@ namespace SegurosApp.API.Services
                     return result;
                 }
 
-                // ✅ INTENTAR EXTRAER NÚMEROS
                 var numbers = System.Text.RegularExpressions.Regex.Matches(cleanDate, @"\d+");
                 if (numbers.Count >= 3)
                 {
@@ -425,13 +349,11 @@ namespace SegurosApp.API.Services
                     var month = int.Parse(numbers[1].Value);
                     var year = int.Parse(numbers[2].Value);
 
-                    // ✅ AJUSTAR AÑO SI ES DE 2 DÍGITOS
                     if (year < 100)
                     {
                         year += (year < 30) ? 2000 : 1900;
                     }
 
-                    // ✅ INTERCAMBIAR SI EL DÍA ES > 12 (probablemente formato MM/dd)
                     if (day > 12 && month <= 12)
                     {
                         (day, month) = (month, day);
@@ -453,7 +375,6 @@ namespace SegurosApp.API.Services
                 _logger.LogError(ex, "❌ Error parseando fecha '{DateStr}'", dateStr);
             }
 
-            // ✅ ÚLTIMO RECURSO: FECHA ACTUAL
             var fallback = DateTime.Today.ToString("yyyy-MM-dd");
             _logger.LogWarning("⚠️ Usando fecha fallback: {Fallback}", fallback);
             return fallback;
@@ -465,15 +386,12 @@ namespace SegurosApp.API.Services
         {
             return new PolizaDataMapped
             {
-                // ✅ DATOS DE PÓLIZA
                 NumeroPoliza = ExtractPolicyNumber(extractedData),
                 Endoso = ExtractEndorsement(extractedData),
                 FechaDesde = ExtractStartDate(extractedData),
                 FechaHasta = ExtractEndDate(extractedData),
                 Premio = ExtractPremium(extractedData),
                 MontoTotal = ExtractTotalAmount(extractedData),
-
-                // ✅ DATOS VEHÍCULO
                 VehiculoMarca = ExtractVehicleBrand(extractedData),
                 VehiculoModelo = ExtractVehicleModel(extractedData),
                 VehiculoAño = ExtractVehicleYear(extractedData),
@@ -482,13 +400,9 @@ namespace SegurosApp.API.Services
                 VehiculoCombustible = ExtractFuelType(extractedData),
                 VehiculoDestino = ExtractDestination(extractedData),
                 VehiculoCategoria = ExtractCategory(extractedData),
-
-                // ✅ FORMA DE PAGO
                 MedioPago = ExtractPaymentMethod(extractedData),
                 CantidadCuotas = ExtractInstallmentCount(extractedData),
                 TipoMovimiento = ExtractMovementType(extractedData),
-
-                // ✅ DATOS DEL CONTEXTO (ya confirmados)
                 AseguradoNombre = "[Confirmado por selección]",
                 AseguradoDocumento = "[Confirmado por selección]"
             };
@@ -504,7 +418,6 @@ namespace SegurosApp.API.Services
         {
             var status = new CriticalFieldsStatus();
 
-            // ✅ NÚMERO DE PÓLIZA
             if (!string.IsNullOrEmpty(mappedData.NumeroPoliza) && mappedData.NumeroPoliza.Length >= 7)
             {
                 status.HasPolicyNumber = true;
@@ -515,7 +428,6 @@ namespace SegurosApp.API.Services
                 status.MissingCritical.Add("Número de Póliza");
             }
 
-            // ✅ INFO VEHÍCULO
             if (!string.IsNullOrEmpty(mappedData.VehiculoMarca) || !string.IsNullOrEmpty(mappedData.VehiculoModelo))
             {
                 status.HasVehicleInfo = true;
@@ -526,7 +438,6 @@ namespace SegurosApp.API.Services
                 status.MissingCritical.Add("Información del Vehículo");
             }
 
-            // ✅ RANGO DE FECHAS
             if (!string.IsNullOrEmpty(mappedData.FechaDesde) && !string.IsNullOrEmpty(mappedData.FechaHasta))
             {
                 status.HasDateRange = true;
@@ -537,7 +448,6 @@ namespace SegurosApp.API.Services
                 status.MissingCritical.Add("Rango de Fechas");
             }
 
-            // ✅ INFO DE PREMIO
             if (mappedData.Premio > 0 || mappedData.MontoTotal > 0)
             {
                 status.HasPremiumInfo = true;
@@ -563,7 +473,6 @@ namespace SegurosApp.API.Services
 
             try
             {
-                // ✅ SUGERENCIA PARA COMBUSTIBLE
                 if (!string.IsNullOrEmpty(mappedData.VehiculoCombustible))
                 {
                     var fuelSuggestion = await _masterDataService.SuggestMappingAsync("combustible", mappedData.VehiculoCombustible);
@@ -582,7 +491,6 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // ✅ SUGERENCIA PARA DESTINO
                 if (!string.IsNullOrEmpty(mappedData.VehiculoDestino))
                 {
                     var destinoSuggestion = await _masterDataService.SuggestMappingAsync("destino", mappedData.VehiculoDestino);
@@ -601,7 +509,6 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // ✅ SUGERENCIA PARA CATEGORÍA
                 if (!string.IsNullOrEmpty(mappedData.VehiculoCategoria))
                 {
                     var categoriaSuggestion = await _masterDataService.SuggestMappingAsync("categoria", mappedData.VehiculoCategoria);
@@ -640,7 +547,6 @@ namespace SegurosApp.API.Services
         {
             var issues = new List<FieldMappingIssue>();
 
-            // ✅ NÚMERO DE PÓLIZA
             if (string.IsNullOrEmpty(mappedData.NumeroPoliza))
             {
                 issues.Add(new FieldMappingIssue
@@ -668,7 +574,6 @@ namespace SegurosApp.API.Services
                 });
             }
 
-            // ✅ FECHAS
             if (string.IsNullOrEmpty(mappedData.FechaDesde) || string.IsNullOrEmpty(mappedData.FechaHasta))
             {
                 issues.Add(new FieldMappingIssue
@@ -683,7 +588,6 @@ namespace SegurosApp.API.Services
                 });
             }
 
-            // ✅ INFORMACIÓN VEHÍCULO
             if (string.IsNullOrEmpty(mappedData.VehiculoMarca) && string.IsNullOrEmpty(mappedData.VehiculoModelo))
             {
                 issues.Add(new FieldMappingIssue
@@ -698,7 +602,6 @@ namespace SegurosApp.API.Services
                 });
             }
 
-            // ✅ PREMIO/MONTO
             if (mappedData.Premio <= 0 && mappedData.MontoTotal <= 0)
             {
                 issues.Add(new FieldMappingIssue
@@ -725,23 +628,19 @@ namespace SegurosApp.API.Services
             Dictionary<string, object> extractedData,
             CriticalFieldsStatus criticalStatus)
         {
-            // ✅ CATEGORIZAR CAMPOS POR TIPO
             var policyFields = CategorizePolicyFields(mappedData, extractedData);
             var vehicleFields = CategorizeVehicleFields(mappedData, extractedData);
             var financialFields = CategorizeFinancialFields(mappedData, extractedData);
             var clientFields = CategorizeClientFields(mappedData, extractedData);
             var masterDataFields = CategorizeMasterDataFields(mappedData, extractedData);
             var optionalFields = CategorizeOptionalFields(mappedData, extractedData);
-
-            // ✅ CALCULAR MÉTRICAS GENERALES
-            var totalFieldsExpected = 20; // Campos críticos esperados
+            var totalFieldsExpected = 20; 
             var mappedFields = CountMappedFields(mappedData);
             var overallCompletionPercentage = (decimal)mappedFields / totalFieldsExpected * 100;
 
-            // ✅ CALCULAR MÉTRICAS DE PERFORMANCE
             var performanceMetrics = new PerformanceMetrics
             {
-                ProcessingTimeMs = 1000, // Placeholder - obtener del contexto real
+                ProcessingTimeMs = 1000, 
                 ValidationTimeMs = 200,
                 MasterDataLookupTimeMs = 300,
                 TotalMappingTimeMs = 1500,
@@ -750,21 +649,18 @@ namespace SegurosApp.API.Services
                 ManualReviewRequired = 0,
             };
 
-            // ✅ CALCULAR BREAKDOWN DE CONFIANZA
             var confidenceBreakdown = CalculateConfidenceBreakdown(mappedData, extractedData);
 
             return new MappingMetrics
             {
                 TotalFieldsScanned = extractedData.Count,
                 FieldsMappedSuccessfully = mappedFields,
-                FieldsWithIssues = 0, // Calculado en IdentifyFieldsRequiringAttention
+                FieldsWithIssues = 0, 
                 FieldsRequireAttention = 0,
                 OverallConfidence = criticalStatus.CriticalFieldsCompleteness,
                 MappingQuality = DetermineMappingQuality(criticalStatus.CriticalFieldsCompleteness),
                 MissingCriticalFields = criticalStatus.MissingCritical,
                 OverallCompletionPercentage = overallCompletionPercentage,
-
-                // ✅ BREAKDOWN DETALLADO POR CATEGORÍAS
                 FieldsByCategory = new CategoryBreakdown
                 {
                     PolicyFields = policyFields,
@@ -784,104 +680,84 @@ namespace SegurosApp.API.Services
         private CategoryMetric CategorizePolicyFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
             var policyFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
-    {
-        { "NumeroPoliza", (!string.IsNullOrEmpty(mappedData.NumeroPoliza), true) },
-        { "Endoso", (!string.IsNullOrEmpty(mappedData.Endoso), false) },
-        { "FechaDesde", (!string.IsNullOrEmpty(mappedData.FechaDesde), true) },
-        { "FechaHasta", (!string.IsNullOrEmpty(mappedData.FechaHasta), true) },
-        { "TipoMovimiento", (!string.IsNullOrEmpty(mappedData.TipoMovimiento), false) }
-    };
+            {
+                { "NumeroPoliza", (!string.IsNullOrEmpty(mappedData.NumeroPoliza), true) },
+                { "Endoso", (!string.IsNullOrEmpty(mappedData.Endoso), false) },
+                { "FechaDesde", (!string.IsNullOrEmpty(mappedData.FechaDesde), true) },
+                { "FechaHasta", (!string.IsNullOrEmpty(mappedData.FechaHasta), true) },
+                { "TipoMovimiento", (!string.IsNullOrEmpty(mappedData.TipoMovimiento), false) }
+            };
 
             return CalculateCategoryMetric(policyFieldsMap, "Póliza");
         }
-
-        /// <summary>
-        /// 🚗 Categorizar campos de vehículo
-        /// </summary>
         private CategoryMetric CategorizeVehicleFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
             var vehicleFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
-    {
-        { "VehiculoMarca", (!string.IsNullOrEmpty(mappedData.VehiculoMarca), true) },
-        { "VehiculoModelo", (!string.IsNullOrEmpty(mappedData.VehiculoModelo), true) },
-        { "VehiculoAño", (mappedData.VehiculoAño > 0, true) },
-        { "VehiculoMotor", (!string.IsNullOrEmpty(mappedData.VehiculoMotor), false) },
-        { "VehiculoChasis", (!string.IsNullOrEmpty(mappedData.VehiculoChasis), false) },
-        { "VehiculoCombustible", (!string.IsNullOrEmpty(mappedData.VehiculoCombustible), false) },
-        { "VehiculoDestino", (!string.IsNullOrEmpty(mappedData.VehiculoDestino), false) },
-        { "VehiculoCategoria", (!string.IsNullOrEmpty(mappedData.VehiculoCategoria), false) }
-    };
+            {
+                { "VehiculoMarca", (!string.IsNullOrEmpty(mappedData.VehiculoMarca), true) },
+                { "VehiculoModelo", (!string.IsNullOrEmpty(mappedData.VehiculoModelo), true) },
+                { "VehiculoAño", (mappedData.VehiculoAño > 0, true) },
+                { "VehiculoMotor", (!string.IsNullOrEmpty(mappedData.VehiculoMotor), false) },
+                { "VehiculoChasis", (!string.IsNullOrEmpty(mappedData.VehiculoChasis), false) },
+                { "VehiculoCombustible", (!string.IsNullOrEmpty(mappedData.VehiculoCombustible), false) },
+                { "VehiculoDestino", (!string.IsNullOrEmpty(mappedData.VehiculoDestino), false) },
+                { "VehiculoCategoria", (!string.IsNullOrEmpty(mappedData.VehiculoCategoria), false) }
+            };
 
             return CalculateCategoryMetric(vehicleFieldsMap, "Vehículo");
         }
 
-        /// <summary>
-        /// 💰 Categorizar campos financieros
-        /// </summary>
         private CategoryMetric CategorizeFinancialFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
             var financialFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
-    {
-        { "Premio", (mappedData.Premio > 0, true) },
-        { "MontoTotal", (mappedData.MontoTotal > 0, false) },
-        { "MedioPago", (!string.IsNullOrEmpty(mappedData.MedioPago), false) },
-        { "CantidadCuotas", (mappedData.CantidadCuotas > 0, false) }
-    };
+            {
+                { "Premio", (mappedData.Premio > 0, true) },
+                { "MontoTotal", (mappedData.MontoTotal > 0, false) },
+                { "MedioPago", (!string.IsNullOrEmpty(mappedData.MedioPago), false) },
+                { "CantidadCuotas", (mappedData.CantidadCuotas > 0, false) }
+            };
 
             return CalculateCategoryMetric(financialFieldsMap, "Financiero");
         }
 
-        /// <summary>
-        /// 👤 Categorizar campos de cliente
-        /// </summary>
         private CategoryMetric CategorizeClientFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
             var clientFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
-    {
-        { "AseguradoNombre", (!string.IsNullOrEmpty(mappedData.AseguradoNombre), true) },
-        { "AseguradoDocumento", (!string.IsNullOrEmpty(mappedData.AseguradoDocumento), true) },
-        { "AseguradoDepartamento", (!string.IsNullOrEmpty(mappedData.AseguradoDepartamento), false) },
-        { "AseguradoDireccion", (!string.IsNullOrEmpty(mappedData.AseguradoDireccion), false) }
-    };
+            {
+                { "AseguradoNombre", (!string.IsNullOrEmpty(mappedData.AseguradoNombre), true) },
+                { "AseguradoDocumento", (!string.IsNullOrEmpty(mappedData.AseguradoDocumento), true) },
+                { "AseguradoDepartamento", (!string.IsNullOrEmpty(mappedData.AseguradoDepartamento), false) },
+                { "AseguradoDireccion", (!string.IsNullOrEmpty(mappedData.AseguradoDireccion), false) }
+            };
 
             return CalculateCategoryMetric(clientFieldsMap, "Cliente");
         }
 
-        /// <summary>
-        /// 🗂️ Categorizar campos de master data
-        /// </summary>
         private CategoryMetric CategorizeMasterDataFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
-            // Estos campos requieren mapeo a IDs específicos de Velneo
             var masterDataFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
-    {
-        { "Departamento", (extractedData.ContainsKey("asegurado.departamento"), false) },
-        { "Combustible", (!string.IsNullOrEmpty(mappedData.VehiculoCombustible), false) },
-        { "Destino", (!string.IsNullOrEmpty(mappedData.VehiculoDestino), false) },
-        { "Categoria", (!string.IsNullOrEmpty(mappedData.VehiculoCategoria), false) }
-    };
+            {
+                { "Departamento", (extractedData.ContainsKey("asegurado.departamento"), false) },
+                { "Combustible", (!string.IsNullOrEmpty(mappedData.VehiculoCombustible), false) },
+                { "Destino", (!string.IsNullOrEmpty(mappedData.VehiculoDestino), false) },
+                { "Categoria", (!string.IsNullOrEmpty(mappedData.VehiculoCategoria), false) }
+            };
 
             return CalculateCategoryMetric(masterDataFieldsMap, "Master Data");
         }
 
-        /// <summary>
-        /// 📄 Categorizar campos opcionales
-        /// </summary>
         private CategoryMetric CategorizeOptionalFields(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
             var optionalFieldsMap = new Dictionary<string, (bool IsMapped, bool IsCritical)>
-    {
-        { "CorredorNombre", (!string.IsNullOrEmpty(mappedData.CorredorNombre), false) },
-        { "CorredorNumero", (!string.IsNullOrEmpty(mappedData.CorredorNumero), false) },
-        { "Moneda", (!string.IsNullOrEmpty(mappedData.Moneda), false) }
-    };
+            {
+                { "CorredorNombre", (!string.IsNullOrEmpty(mappedData.CorredorNombre), false) },
+                { "CorredorNumero", (!string.IsNullOrEmpty(mappedData.CorredorNumero), false) },
+                { "Moneda", (!string.IsNullOrEmpty(mappedData.Moneda), false) }
+            };
 
             return CalculateCategoryMetric(optionalFieldsMap, "Opcional");
         }
 
-        /// <summary>
-        /// 📊 Calcular métrica de categoría
-        /// </summary>
         private CategoryMetric CalculateCategoryMetric(Dictionary<string, (bool IsMapped, bool IsCritical)> fieldsMap, string categoryName)
         {
             var totalFields = fieldsMap.Count;
@@ -898,27 +774,24 @@ namespace SegurosApp.API.Services
                 MappedFields = mappedFields,
                 MissingFields = totalFields - mappedFields,
                 CompletionPercentage = completionPercentage,
-                AverageConfidence = mappedFields > 0 ? 85.0m : 0, // Placeholder - calcular real
+                AverageConfidence = mappedFields > 0 ? 85.0m : 0, 
                 CriticalMissing = criticalMissing,
                 SuccessfullyMapped = successfullyMapped
             };
         }
 
-        /// <summary>
-        /// 🔍 Calcular breakdown de confianza
-        /// </summary>
         private ConfidenceBreakdown CalculateConfidenceBreakdown(PolizaDataMapped mappedData, Dictionary<string, object> extractedData)
         {
             var allFields = new[]
             {
-        ("NumeroPoliza", !string.IsNullOrEmpty(mappedData.NumeroPoliza), 95m),
-        ("FechaDesde", !string.IsNullOrEmpty(mappedData.FechaDesde), 90m),
-        ("FechaHasta", !string.IsNullOrEmpty(mappedData.FechaHasta), 90m),
-        ("VehiculoMarca", !string.IsNullOrEmpty(mappedData.VehiculoMarca), 88m),
-        ("VehiculoModelo", !string.IsNullOrEmpty(mappedData.VehiculoModelo), 85m),
-        ("Premio", mappedData.Premio > 0, 92m),
-        ("VehiculoAño", mappedData.VehiculoAño > 0, 95m)
-    };
+                ("NumeroPoliza", !string.IsNullOrEmpty(mappedData.NumeroPoliza), 95m),
+                ("FechaDesde", !string.IsNullOrEmpty(mappedData.FechaDesde), 90m),
+                ("FechaHasta", !string.IsNullOrEmpty(mappedData.FechaHasta), 90m),
+                ("VehiculoMarca", !string.IsNullOrEmpty(mappedData.VehiculoMarca), 88m),
+                ("VehiculoModelo", !string.IsNullOrEmpty(mappedData.VehiculoModelo), 85m),
+                ("Premio", mappedData.Premio > 0, 92m),
+                ("VehiculoAño", mappedData.VehiculoAño > 0, 95m)
+            };
 
             var mappedFieldsWithConfidence = allFields.Where(f => f.Item2).ToList();
 
@@ -1066,7 +939,6 @@ namespace SegurosApp.API.Services
             CriticalFieldsStatus criticalStatus,
             List<FieldMappingIssue> issues)
         {
-            // ✅ CRITERIOS MÍNIMOS PARA ESTAR "COMPLETO"
             var hasEssentials = !string.IsNullOrEmpty(mappedData.NumeroPoliza) &&
                                mappedData.NumeroPoliza.Length >= 7 &&
                                !string.IsNullOrEmpty(mappedData.FechaDesde) &&
@@ -1142,14 +1014,14 @@ namespace SegurosApp.API.Services
         private decimal ExtractPremium(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        // ✅ CAMPOS REALES QUE LLEGAN DEL ESCANEO
-        "poliza.prima_comercial",           // "Prima Comercial:\n$ 123.584,47"
-        "financiero.prima_comercial",       // "Prima Comercial:\n$ 123.584,47"
-        "pago.cuotas[0].prima",            // "Prima:\n$ 15.379,00"
-        
-        // Campos adicionales por si acaso
-        "prima_comercial", "conpremio", "premio", "datos_financiero"
-    };
+                "poliza.prima_comercial",           
+                "financiero.prima_comercial",    
+                "pago.cuotas[0].prima",            
+                "prima_comercial", 
+                "conpremio", 
+                "premio", 
+                "datos_financiero"
+            };
 
             foreach (var field in possibleFields)
             {
@@ -1175,7 +1047,6 @@ namespace SegurosApp.API.Services
 
             try
             {
-                // ✅ LIMPIAR EL STRING: quitar texto descriptivo y símbolos
                 var cleanValue = value
                     .Replace("Prima Comercial:", "")
                     .Replace("Premio Total a Pagar:", "")
@@ -1190,13 +1061,12 @@ namespace SegurosApp.API.Services
                     .Replace("\r", " ")
                     .Trim();
 
-                // ✅ BUSCAR PATRÓN DE NÚMERO CON FORMATO URUGUAYO: 123.584,47
                 var uruguayanMatch = Regex.Match(cleanValue, @"(\d{1,3}(?:\.\d{3})*,\d{2})");
                 if (uruguayanMatch.Success)
                 {
                     var uruguayanNumber = uruguayanMatch.Groups[1].Value
-                        .Replace(".", "")  // Quitar separadores de miles
-                        .Replace(",", "."); // Cambiar coma decimal por punto
+                        .Replace(".", "")  
+                        .Replace(",", "."); 
 
                     if (decimal.TryParse(uruguayanNumber, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
                     {
@@ -1205,11 +1075,10 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // ✅ BUSCAR PATRÓN DE NÚMERO ESTÁNDAR: 123,584.47
                 var standardMatch = Regex.Match(cleanValue, @"(\d{1,3}(?:,\d{3})*\.\d{2})");
                 if (standardMatch.Success)
                 {
-                    var standardNumber = standardMatch.Groups[1].Value.Replace(",", ""); // Quitar separadores de miles
+                    var standardNumber = standardMatch.Groups[1].Value.Replace(",", ""); 
 
                     if (decimal.TryParse(standardNumber, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
                     {
@@ -1218,7 +1087,6 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // ✅ BUSCAR CUALQUIER NÚMERO
                 var anyNumberMatch = Regex.Match(cleanValue, @"(\d+(?:[.,]\d+)?)");
                 if (anyNumberMatch.Success)
                 {
@@ -1243,13 +1111,13 @@ namespace SegurosApp.API.Services
         private decimal ExtractTotalAmount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        // ✅ CAMPOS REALES QUE LLEGAN DEL ESCANEO
-        "financiero.premio_total",          // "Premio Total a Pagar:\n$ 153.790,00"
-        "datos_financiero",                 // Contiene "Premio Total a Pagar:\n$ 153.790,00"
-        
-        // Campos adicionales por si acaso
-        "premio_total", "contot", "total", "PREMIO TOTAL A PAGAR"
-    };
+                "financiero.premio_total",          
+                "datos_financiero",                 
+                "premio_total", 
+                "contot", 
+                "total", 
+                "PREMIO TOTAL A PAGAR"
+            };
 
             foreach (var field in possibleFields)
             {
@@ -1257,7 +1125,6 @@ namespace SegurosApp.API.Services
                 {
                     _logger.LogInformation("🎯 ExtractTotalAmount - Campo encontrado: '{Field}' = '{Value}'", field, value);
 
-                    // Para el campo datos_financiero, buscar específicamente "Premio Total a Pagar"
                     if (field == "datos_financiero" && value.Contains("Premio Total a Pagar"))
                     {
                         var match = Regex.Match(value, @"Premio Total a Pagar:\s*\$?\s*([\d.,]+)");
@@ -1323,8 +1190,8 @@ namespace SegurosApp.API.Services
         private string ExtractMotorNumber(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "vehiculo.motor", "motor", "MOTOR", "numero_motor"
-    };
+                "vehiculo.motor", "motor", "MOTOR", "numero_motor"
+            };
             var motorFull = GetFirstValidValue(data, possibleFields);
 
             return motorFull.Replace("MOTOR", "").Replace("motor", "").Trim();
@@ -1333,8 +1200,8 @@ namespace SegurosApp.API.Services
         private string ExtractChassisNumber(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "vehiculo.chasis", "chasis", "CHASIS", "numero_chasis"
-    };
+                "vehiculo.chasis", "chasis", "CHASIS", "numero_chasis"
+            };
             var chassisFull = GetFirstValidValue(data, possibleFields);
 
             return chassisFull.Replace("CHASIS", "").Replace("chasis", "").Trim();
@@ -1367,24 +1234,24 @@ namespace SegurosApp.API.Services
         private string ExtractPaymentMethod(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "pago.medio",          
-        "pago.forma",
-        "forma_pago",
-        "payment_method",
-        "metodo_pago"
-    };
+                "pago.medio",          
+                "pago.forma",
+                "forma_pago",
+                "payment_method",
+                "metodo_pago"
+            };
             return GetFirstValidValue(data, possibleFields);
         }
 
         private int ExtractInstallmentCount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        // ✅ CAMPOS REALES QUE LLEGAN DEL ESCANEO
-        "pago.modo_facturacion",           // "Modo de facturación: 10 cuotas."
-        
-        // Campos adicionales por si acaso
-        "cantidadCuotas", "cantidad_cuotas", "cuotas", "concuo"
-    };
+                "pago.modo_facturacion", 
+                "cantidadCuotas", 
+                "cantidad_cuotas", 
+                "cuotas", 
+                "concuo"
+            };
 
             foreach (var field in possibleFields)
             {
@@ -1392,7 +1259,6 @@ namespace SegurosApp.API.Services
                 {
                     _logger.LogInformation("🎯 ExtractInstallmentCount - Campo encontrado: '{Field}' = '{Value}'", field, value);
 
-                    // Buscar patrón "X cuotas" o números seguidos de "cuotas"
                     var match = Regex.Match(value, @"(\d+)\s*cuotas?", RegexOptions.IgnoreCase);
                     if (match.Success && int.TryParse(match.Groups[1].Value, out var cuotas) && cuotas > 0)
                     {
@@ -1400,7 +1266,6 @@ namespace SegurosApp.API.Services
                         return cuotas;
                     }
 
-                    // Buscar cualquier número en el texto
                     var numberMatch = Regex.Match(value, @"(\d+)");
                     if (numberMatch.Success && int.TryParse(numberMatch.Groups[1].Value, out var number) && number > 0 && number <= 60)
                     {
@@ -1411,7 +1276,7 @@ namespace SegurosApp.API.Services
             }
 
             _logger.LogWarning("⚠️ ExtractInstallmentCount - No se encontró número de cuotas, usando valor por defecto: 1");
-            return 1; // Por defecto 1 cuota
+            return 1; 
         }
 
         private string ExtractMovementType(Dictionary<string, object> data)
@@ -1444,7 +1309,7 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-            return 1; // Default: Montevideo
+            return 1;
         }
 
         private async Task<string> FindFuelCodeAsync(Dictionary<string, object> data)
@@ -1464,7 +1329,7 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-            return "1"; // Default
+            return "1";
         }
 
         private async Task<int> FindDestinationIdAsync(Dictionary<string, object> data)
@@ -1484,7 +1349,7 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-            return 1; // Default
+            return 1; 
         }
 
         private async Task<int> FindCategoryIdAsync(Dictionary<string, object> data)
@@ -1504,18 +1369,16 @@ namespace SegurosApp.API.Services
                     }
                 }
             }
-            return 1; // Default
+            return 1; 
         }
 
         private async Task<int> FindQualityIdAsync(Dictionary<string, object> data)
         {
-            // Por ahora valor por defecto, se puede implementar lógica específica
             return 1;
         }
 
         private async Task<int> FindTariffIdAsync(Dictionary<string, object> data)
         {
-            // Por ahora valor por defecto, se puede implementar lógica específica
             return 1;
         }
 
@@ -1530,15 +1393,15 @@ namespace SegurosApp.API.Services
             var normalized = paymentMethod.ToUpper();
             return normalized switch
             {
-                var x when x.Contains("CONTADO") || x.Contains("EFECTIVO") => "1",     // Efectivo
-                var x when x.Contains("TARJETA") || x.Contains("CREDITO") => "2",      // Tarjeta Cred.
-                var x when x.Contains("DEBITO") || x.Contains("BANCARIO") => "3",      // Debito Banc.
-                var x when x.Contains("COBRADOR") => "4",                              // Cobrador
-                var x when x.Contains("CONFORME") => "5",                              // Conforme
-                var x when x.Contains("CHEQUE") => "6",                                // Cheque diferido
-                var x when x.Contains("TRANSFERENCIA") => "7",                         // Transferencia bancaria
-                var x when x.Contains("PASS") || x.Contains("CARD") => "8",            // Pass Card
-                _ => "1" // Default: Efectivo
+                var x when x.Contains("CONTADO") || x.Contains("EFECTIVO") => "1",     
+                var x when x.Contains("TARJETA") || x.Contains("CREDITO") => "2",     
+                var x when x.Contains("DEBITO") || x.Contains("BANCARIO") => "3",      
+                var x when x.Contains("COBRADOR") => "4",                            
+                var x when x.Contains("CONFORME") => "5",                             
+                var x when x.Contains("CHEQUE") => "6",                                
+                var x when x.Contains("TRANSFERENCIA") => "7",                         
+                var x when x.Contains("PASS") || x.Contains("CARD") => "8",           
+                _ => "1" 
             };
         }
 
@@ -1549,8 +1412,6 @@ namespace SegurosApp.API.Services
         private async Task ValidateVelneoRequest(VelneoPolizaRequest request)
         {
             var errors = new List<string>();
-
-            // ✅ VALIDAR IDs REQUERIDOS
             if (request.clinro <= 0)
                 errors.Add("Cliente ID es requerido");
 
@@ -1560,7 +1421,6 @@ namespace SegurosApp.API.Services
             if (request.seccod <= 0)
                 errors.Add("Sección ID es requerido");
 
-            // ✅ VALIDAR DATOS CRÍTICOS
             if (string.IsNullOrEmpty(request.conpol))
                 errors.Add("Número de póliza es requerido");
 
@@ -1570,7 +1430,6 @@ namespace SegurosApp.API.Services
             if (string.IsNullOrEmpty(request.confchhas))
                 errors.Add("Fecha de fin es requerida");
 
-            // ✅ VALIDAR FECHAS
             if (!string.IsNullOrEmpty(request.confchdes) && !DateTime.TryParse(request.confchdes, out _))
                 errors.Add("Fecha de inicio tiene formato inválido");
 
@@ -1664,9 +1523,9 @@ namespace SegurosApp.API.Services
 
             var patterns = new[]
             {
-                @"(\d{1,2})/(\d{1,2})/(\d{4})",  // dd/MM/yyyy
-                @"(\d{4})-(\d{1,2})-(\d{1,2})",  // yyyy-MM-dd
-                @"(\d{1,2})-(\d{1,2})-(\d{4})"   // dd-MM-yyyy
+                @"(\d{1,2})/(\d{1,2})/(\d{4})",  
+                @"(\d{4})-(\d{1,2})-(\d{1,2})",  
+                @"(\d{1,2})-(\d{1,2})-(\d{4})"   
             };
 
             foreach (var pattern in patterns)
@@ -1695,31 +1554,9 @@ namespace SegurosApp.API.Services
             return "";
         }
 
-        private decimal ExtractAmountFromText(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return 0;
-
-            var match = Regex.Match(text, @"[\$\s]*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?)");
-            if (match.Success)
-            {
-                var amountStr = match.Groups[1].Value
-                    .Replace(".", "")  // Remover separadores de miles
-                    .Replace(",", "."); // Convertir coma decimal a punto
-
-                if (decimal.TryParse(amountStr, NumberStyles.Currency, CultureInfo.InvariantCulture, out var amount))
-                {
-                    return amount;
-                }
-            }
-            return 0;
-        }
-
         #endregion
     }
 
-    /// <summary>
-    /// 🚨 Excepción para errores de validación
-    /// </summary>
     public class ValidationException : Exception
     {
         public ValidationException(string message) : base(message) { }

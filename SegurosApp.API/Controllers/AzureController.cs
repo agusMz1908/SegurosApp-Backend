@@ -23,9 +23,6 @@ namespace SegurosApp.API.Controllers
             _logger = logger;
         }
 
-        /// <summary>
-        /// 🔧 Obtener configuración actual de Azure
-        /// </summary>
         [HttpGet("config")]
         [ProducesResponseType(typeof(object), 200)]
         public ActionResult GetAzureConfig()
@@ -54,9 +51,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 🧪 Test de conectividad básica con Azure
-        /// </summary>
         [HttpGet("health")]
         [ProducesResponseType(typeof(object), 200)]
         public async Task<ActionResult> TestAzureHealth()
@@ -80,7 +74,6 @@ namespace SegurosApp.API.Controllers
                 using var httpClient = new HttpClient();
                 httpClient.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", apiKey);
 
-                // Test básico de conectividad
                 var testUrl = $"{endpoint.TrimEnd('/')}/formrecognizer/info?api-version=2023-07-31";
                 _logger.LogInformation("🧪 Testing connectivity: {Url}", testUrl);
 
@@ -118,9 +111,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 📋 Obtener información detallada del modelo
-        /// </summary>
         [HttpGet("model-info")]
         [ProducesResponseType(typeof(object), 200)]
         public async Task<ActionResult> GetModelInfo()
@@ -203,9 +193,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 📝 Listar todos los modelos disponibles
-        /// </summary>
         [HttpGet("models")]
         [ProducesResponseType(typeof(object), 200)]
         public async Task<ActionResult> ListAvailableModels()
@@ -282,9 +269,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 🧪 Procesar documento de prueba con diagnóstico completo
-        /// </summary>
         [HttpPost("test-process")]
         [ProducesResponseType(typeof(object), 200)]
         public async Task<ActionResult> TestProcessDocument([Required] IFormFile file)
@@ -304,7 +288,6 @@ namespace SegurosApp.API.Controllers
 
                 _logger.LogInformation("🧪 Test processing: {FileName} ({FileSize} bytes)", file.FileName, file.Length);
 
-                // Test directo con cliente Azure
                 try
                 {
                     var client = new DocumentIntelligenceClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
@@ -320,7 +303,6 @@ namespace SegurosApp.API.Controllers
                     var result = operation.Value;
                     stopwatch.Stop();
 
-                    // Extraer información básica
                     var fieldsFound = new List<object>();
                     if (result.Documents?.Count > 0)
                     {
@@ -393,16 +375,12 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 🔄 Cambiar modelo temporalmente para testing
-        /// </summary>
         [HttpPost("change-model")]
         [ProducesResponseType(typeof(object), 200)]
         public ActionResult ChangeModel([FromBody] ChangeModelRequest request)
         {
             try
             {
-                // Nota: Esto solo cambia en memoria, no persiste
                 _configuration["AzureDocumentIntelligence:ModelId"] = request.ModelId;
 
                 return Ok(new
@@ -421,9 +399,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// 📊 Diagnóstico completo del servicio Azure
-        /// </summary>
         [HttpGet("diagnostics")]
         [ProducesResponseType(typeof(object), 200)]
         public async Task<ActionResult> GetCompleteDiagnostics()

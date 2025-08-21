@@ -31,7 +31,6 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("🔐 Intento de login para usuario: {Username}", username);
 
-                // ✅ CONSULTA ADAPTADA A TU ESTRUCTURA
                 var user = await _context.Users
                     .FirstOrDefaultAsync(u =>
                         (u.Username == username || u.Email == username) &&
@@ -47,17 +46,14 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                // ✅ VERIFICAR CONTRASEÑA - Adaptado para tu BD
                 bool passwordValid = false;
 
                 if (user.PasswordHash.StartsWith("$2"))
                 {
-                    // Es un hash BCrypt
                     passwordValid = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
                 }
                 else
                 {
-                    // Para testing: comparación directa
                     passwordValid = user.PasswordHash == password;
                 }
 
@@ -71,10 +67,8 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                // Generar JWT token
                 var token = GenerateJwtToken(user);
 
-                // Actualizar último login
                 user.LastLoginAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
@@ -112,8 +106,6 @@ namespace SegurosApp.API.Services
             try
             {
                 _logger.LogInformation("📝 Intento de registro para usuario: {Username}", request.Username);
-
-                // Verificar si el usuario ya existe
                 var existingUser = await _context.Users
                     .FirstOrDefaultAsync(u => u.Username == request.Username || u.Email == request.Email);
 
@@ -123,7 +115,6 @@ namespace SegurosApp.API.Services
                     return ApiResponse<UserDto>.ErrorResult("El usuario o email ya existe");
                 }
 
-                // Crear nuevo usuario adaptado a tu estructura
                 var user = new User
                 {
                     Username = request.Username,

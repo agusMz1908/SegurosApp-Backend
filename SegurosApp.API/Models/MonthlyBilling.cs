@@ -19,7 +19,7 @@ namespace SegurosApp.API.Models
         public decimal TotalAmount { get; set; }
 
         [MaxLength(50)]
-        public string Status { get; set; } = "Pending"; // Pending, Paid, Overdue, Cancelled
+        public string Status { get; set; } = "Pending"; 
 
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
         public DateTime DueDate { get; set; }
@@ -31,7 +31,6 @@ namespace SegurosApp.API.Models
         [MaxLength(200)]
         public string? PaymentReference { get; set; }
 
-        // Company snapshot
         [Required, MaxLength(200)]
         public string CompanyName { get; set; } = string.Empty;
 
@@ -41,7 +40,6 @@ namespace SegurosApp.API.Models
         [MaxLength(50)]
         public string? CompanyRUC { get; set; }
 
-        // Navigation properties
         public User User { get; set; } = null!;
         public PricingTier AppliedTier { get; set; } = null!;
         public List<BillingItem> BillingItems { get; set; } = new();

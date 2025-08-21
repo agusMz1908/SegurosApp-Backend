@@ -258,7 +258,6 @@ namespace SegurosApp.API.Controllers
         {
             try
             {
-                // ✅ CONSTRUIR FILTROS
                 var filters = new ClienteSearchFilters
                 {
                     Nombre = nombre,
@@ -272,7 +271,6 @@ namespace SegurosApp.API.Controllers
                     SoloActivos = soloActivos
                 };
 
-                // ✅ LIMPIAR Y VALIDAR FILTROS
                 filters.TrimAndCleanFilters();
 
                 if (!filters.HasAnyFilter())
@@ -281,7 +279,6 @@ namespace SegurosApp.API.Controllers
                         "Debe especificar al menos un filtro de búsqueda"));
                 }
 
-                // ✅ VALIDAR MODELO CON DATA ANNOTATIONS
                 if (!TryValidateModel(filters))
                 {
                     var errors = ModelState
@@ -297,10 +294,8 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("🔍 Usuario {UserId} realizando búsqueda avanzada clientes: {Filters}",
                     userId, filters.ToString());
 
-                // ✅ LLAMADA AL SERVICIO
                 var clientes = await _masterDataService.AdvancedSearchClientesAsync(filters);
 
-                // ✅ RESPUESTA DETALLADA
                 var message = GenerateAdvancedSearchResultMessage(clientes.Count, filters);
 
                 _logger.LogInformation("✅ Búsqueda avanzada completada: {Count} resultados con {ActiveFilters} filtros",
@@ -496,7 +491,6 @@ namespace SegurosApp.API.Controllers
                 var userId = GetCurrentUserId();
                 _logger.LogInformation("🏢 Usuario {UserId} obteniendo compañías", userId);
 
-                // ✅ LLAMADA REAL A VELNEO
                 var companias = await _masterDataService.GetCompaniasAsync();
 
                 _logger.LogInformation("✅ Compañías obtenidas: {Count}", companias.Count);
@@ -606,8 +600,6 @@ namespace SegurosApp.API.Controllers
             };
         }
     }
-
-    // REQUEST DTOS
     public class SuggestMappingRequest
     {
         public string FieldName { get; set; } = string.Empty;

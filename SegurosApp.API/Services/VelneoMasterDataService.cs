@@ -3,7 +3,6 @@ using SegurosApp.API.Converters;
 using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
-using SegurosApp.API.Converters;
 using SegurosApp.API.Interfaces;
 using System.Text;
 using System.Text.Json;
@@ -1250,19 +1249,6 @@ namespace SegurosApp.API.Services
                 var jsonDoc = JsonDocument.Parse(responseJson);
                 var root = jsonDoc.RootElement;
 
-                // La respuesta de /contratos tiene esta estructura:
-                // {
-                //   "count": 1,
-                //   "total_count": 1,
-                //   "contratos": [
-                //     {
-                //       "id": 7646,
-                //       "conpol": "numero_poliza",
-                //       ...
-                //     }
-                //   ]
-                // }
-
                 if (root.TryGetProperty("contratos", out var contratosArray) &&
                     contratosArray.ValueKind == JsonValueKind.Array &&
                     contratosArray.GetArrayLength() > 0)
@@ -1299,27 +1285,23 @@ namespace SegurosApp.API.Services
 
         private object CreateVelneoPayload(VelneoPolizaRequest request)
         {
-            // ✅ Basado en el curl que funcionó + correcciones identificadas
             return new
             {
-                // ✅ ID auto-generado por Velneo
                 id = 0,
 
-                // ✅ IDS PRINCIPALES - OBLIGATORIOS
-                comcod = request.comcod,          // Compañía
-                seccod = request.seccod,          // Sección  
-                clinro = request.clinro,          // Cliente
+                comcod = request.comcod,         
+                seccod = request.seccod,         
+                clinro = request.clinro,          
 
-                // ✅ DATOS BÁSICOS DE PÓLIZA - CORREGIDOS
-                condom = request.condom ?? "",                    // ✅ Dirección (faltaba mapear)
-                conmaraut = ConcatenateBrandModel(request.conmaraut, request.conmodaut), // ✅ Marca + Modelo concatenados
-                conanioaut = request.conanioaut,                  // ✅ Año del vehículo
+                condom = request.condom ?? "",                    
+                conmaraut = ConcatenateBrandModel(request.conmaraut, request.conmodaut), 
+                conanioaut = request.conanioaut,                  
                 concodrev = 0,
                 conmataut = request.conmataut ?? "",
                 conficto = 0,
-                conmotor = ExtractMotorCode(request.conmotor),    // ✅ Solo código motor sin "MOTOR"
+                conmotor = ExtractMotorCode(request.conmotor),    
                 conpadaut = "",
-                conchasis = ExtractChassisCode(request.conchasis), // ✅ Solo código chasis sin "CHASIS"
+                conchasis = ExtractChassisCode(request.conchasis), 
                 conclaaut = 0,
                 condedaut = 0,
                 conresciv = 0,
@@ -1330,34 +1312,30 @@ namespace SegurosApp.API.Services
                 concestel = "",
                 concapaut = 0,
 
-                // ✅ MONTOS - CORREGIDOS
                 conpremio = request.conpremio,
                 contot = request.contot,
-                moncod = request.moncod > 0 ? request.moncod : 858,  // ✅ Por defecto UYU (858)
-                concuo = request.concuo > 0 ? request.concuo : 0,    // ✅ Número de cuotas
+                moncod = request.moncod > 0 ? request.moncod : 0,  
+                concuo = request.concuo > 0 ? request.concuo : 0,    
                 concomcorr = 0,
 
-                // ✅ MASTER DATA IDS - CORREGIDOS
                 catdsc = request.catdsc,
                 desdsc = request.desdsc,
                 caldsc = request.caldsc,
                 flocod = 0,
 
-                // ✅ DATOS DE PÓLIZA
                 concar = "",
-                conpol = request.conpol,          // Número de póliza
-                conend = request.conend ?? request.conpol,  // Endoso (por defecto igual que póliza)
-                confchdes = request.confchdes,    // Fecha desde
-                confchhas = request.confchhas,    // Fecha hasta
+                conpol = request.conpol,         
+                conend = request.conend ?? request.conpol, 
+                confchdes = request.confchdes, 
+                confchhas = request.confchhas,    
 
-                // ✅ OTROS CAMPOS REQUERIDOS
                 conimp = 0,
                 connroser = 0,
                 rieres = "",
                 conges = "",
                 congesti = request.congesti ?? "1",
                 congesfi = DateTime.Now.ToString("yyyy-MM-dd"),
-                congeses = MapEstadoGestion(request.congeses),   // ✅ Estado gestión por número (1=Pendiente, 2=siguiente, etc.)
+                congeses = MapEstadoGestion(request.congeses),   
                 convig = request.convig ?? "1",
                 concan = 0,
                 congrucon = "",
@@ -1367,8 +1345,8 @@ namespace SegurosApp.API.Services
                 concapla = 0,
                 conflota = 0,
                 condednum = 0,
-                consta = request.consta ?? "T",    // ✅ Forma de pago
-                contra = request.contra ?? "1",    // ✅ Trámite
+                consta = request.consta ?? "T",    
+                contra = request.contra ?? "1",    
                 conconf = "",
                 conpadre = 0,
                 confchcan = DateTime.Now.ToString("yyyy-MM-dd"),
@@ -1435,7 +1413,7 @@ namespace SegurosApp.API.Services
                 linexclu = 0,
                 concapret = 0,
                 forpagvid = "",
-                clinom = request.clinom ?? "",                   // ✅ Nombre del cliente
+                clinom = request.clinom ?? "",                  
                 tarcod = request.tarcod,
                 corrnom = request.corrnom,
                 connroint = 0,
@@ -1472,7 +1450,7 @@ namespace SegurosApp.API.Services
                 condetrc = "",
                 conautcort = true,
                 condetail = "",
-                clinro1 = request.clinro1 > 0 ? request.clinro1 : request.clinro,  // ✅ Por defecto mismo cliente, override si hay tomador diferente
+                clinro1 = request.clinro1 > 0 ? request.clinro1 : request.clinro,  
                 consumsal = 0,
                 conespbon = "",
                 leer = true,
@@ -1489,8 +1467,8 @@ namespace SegurosApp.API.Services
                 contotant = 0,
                 cotizacion = "",
                 motivos_no_renovacion = 0,
-                com_alias = request.com_alias ?? "",             // ✅ Nombre de la compañía
-                ramo = request.ramo ?? "",                        // ✅ Nombre de la sección
+                com_alias = request.com_alias ?? "",             
+                ramo = request.ramo ?? "",                        
                 clausula = "",
                 aereo = true,
                 maritimo = true,
@@ -1512,7 +1490,6 @@ namespace SegurosApp.API.Services
                 var_ubi = true,
                 mis_rie = true,
 
-                // ✅ METADATOS - TIMESTAMPS
                 ingresado = request.ingresado.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
                 last_update = request.last_update.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
                 comcod1 = 0,
@@ -1534,7 +1511,6 @@ namespace SegurosApp.API.Services
 
             if (!string.IsNullOrWhiteSpace(brand))
             {
-                // Limpiar "MARCA" del texto
                 var cleanBrand = brand.Replace("MARCA", "").Replace("marca", "").Trim();
                 if (!string.IsNullOrWhiteSpace(cleanBrand))
                     parts.Add(cleanBrand);
@@ -1542,7 +1518,6 @@ namespace SegurosApp.API.Services
 
             if (!string.IsNullOrWhiteSpace(model))
             {
-                // Limpiar "MODELO" del texto
                 var cleanModel = model.Replace("MODELO", "").Replace("modelo", "").Trim();
                 if (!string.IsNullOrWhiteSpace(cleanModel))
                     parts.Add(cleanModel);
@@ -1553,7 +1528,7 @@ namespace SegurosApp.API.Services
 
         private string MapEstadoGestion(string? estado)
         {
-            if (string.IsNullOrWhiteSpace(estado)) return "1"; // Por defecto "Pendiente"
+            if (string.IsNullOrWhiteSpace(estado)) return "1"; 
 
             var estadoNormalizado = estado.ToLower().Trim();
 
@@ -1570,23 +1545,19 @@ namespace SegurosApp.API.Services
                 "enviado a cía x mail" => "9",
                 "devuelto a ejecutivo" => "10",
                 "declinado" => "11",
-                _ => "1" // Por defecto "Pendiente"
+                _ => "1" 
             };
         }
 
         private string ExtractMotorCode(string? motorFull)
         {
             if (string.IsNullOrWhiteSpace(motorFull)) return "";
-
-            // Quitar "MOTOR" del inicio y espacios
             return motorFull.Replace("MOTOR", "").Replace("motor", "").Trim();
         }
 
         private string ExtractChassisCode(string? chassisFull)
         {
             if (string.IsNullOrWhiteSpace(chassisFull)) return "";
-
-            // Quitar "CHASIS" del inicio y espacios
             return chassisFull.Replace("CHASIS", "").Replace("chasis", "").Trim();
         }
 

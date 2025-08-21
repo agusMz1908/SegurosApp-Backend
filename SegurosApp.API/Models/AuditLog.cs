@@ -32,7 +32,6 @@ namespace SegurosApp.API.Models
         [Required]
         public DateTime Timestamp { get; set; }
 
-        // Navigation properties
         [ForeignKey("UserId")]
         public virtual User? User { get; set; }
     }
