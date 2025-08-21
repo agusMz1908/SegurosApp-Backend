@@ -1,29 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>ccf3797d-56fb-4edf-9b53-8ecc7ad08b99</UserSecretsId>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
-    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.18" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.8.1" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.1.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Middleware\" />
-  </ItemGroup>
-
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>ccf3797d-56fb-4edf-9b53-8ecc7ad08b99</UserSecretsId>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
+		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.8" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.8">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
+		<PackageReference Include="QuestPDF" Version="2025.7.0" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.8.1" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<Folder Include="Middleware\" />
+	</ItemGroup>
 </Project>

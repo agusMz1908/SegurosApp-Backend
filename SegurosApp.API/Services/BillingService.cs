@@ -251,5 +251,66 @@ namespace SegurosApp.API.Services
                 throw;
             }
         }
+
+        public async Task<BillDetailDto?> GetBillDetailAsync(int billId)
+        {
+            try
+            {
+                var bill = await _context.MonthlyBilling
+                    .Include(mb => mb.AppliedTier)
+                    .Include(mb => mb.BillingItems)
+                        .ThenInclude(bi => bi.DocumentScan)
+                    .FirstOrDefaultAsync(mb => mb.Id == billId);
+
+                if (bill == null)
+                {
+                    _logger.LogWarning("Factura con ID {BillId} no encontrada", billId);
+                    return null;
+                }
+
+                var result = new BillDetailDto
+                {
+                    Id = bill.Id,
+                    BillingYear = bill.BillingYear,
+                    BillingMonth = bill.BillingMonth,
+                    TotalPolizasEscaneadas = bill.TotalPolizasEscaneadas,
+                    AppliedTierName = bill.AppliedTier.TierName,
+                    PricePerPoliza = bill.PricePerPoliza,
+                    SubTotal = bill.SubTotal,
+                    TaxAmount = bill.TaxAmount,
+                    TotalAmount = bill.TotalAmount,
+                    Status = bill.Status,
+                    GeneratedAt = bill.GeneratedAt,
+                    DueDate = bill.DueDate,
+                    PaidAt = bill.PaidAt,
+                    PaymentMethod = bill.PaymentMethod,
+                    PaymentReference = bill.PaymentReference,
+                    CompanyName = bill.CompanyName,
+                    CompanyAddress = bill.CompanyAddress,
+                    CompanyRUC = bill.CompanyRUC,
+                    BillingItemsCount = bill.BillingItems.Count,
+                    BillingItems = bill.BillingItems.Select(bi => new BillingItemDto
+                    {
+                        Id = bi.Id,
+                        ScanDate = bi.ScanDate,
+                        FileName = bi.FileName,
+                        VelneoPolizaNumber = bi.VelneoPolizaNumber,
+                        PricePerPoliza = bi.PricePerPoliza,
+                        Amount = bi.Amount,
+                        CreatedAt = bi.CreatedAt
+                    }).OrderBy(bi => bi.ScanDate).ToList()
+                };
+
+                _logger.LogInformation("Obtenido detalle de factura {BillId} con {ItemsCount} items",
+                    billId, result.BillingItems.Count);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo detalle de factura {BillId}", billId);
+                throw;
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SegurosApp.API.DTOs;
+using SegurosApp.API.Interfaces;
 using SegurosApp.API.Services;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
@@ -13,12 +14,14 @@ namespace SegurosApp.API.Controllers
     public class BillingController : ControllerBase
     {
         private readonly BillingService _billingService;
+        private readonly IPdfService _pdfService;
         private readonly ILogger<BillingController> _logger;
 
-        public BillingController(BillingService billingService, ILogger<BillingController> logger)
+        public BillingController(BillingService billingService, ILogger<BillingController> logger, IPdfService pdfService)
         {
             _billingService = billingService;
             _logger = logger;
+            _pdfService = pdfService;
         }
 
         [HttpGet("current-month-stats")]
@@ -165,6 +168,68 @@ namespace SegurosApp.API.Controllers
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             return string.IsNullOrEmpty(userIdClaim) ? null : int.Parse(userIdClaim);
+        }
+
+        [HttpGet("company-bills/{id}")]
+        [ProducesResponseType(typeof(BillDetailDto), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<BillDetailDto>> GetCompanyBill(int id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("📄 Usuario {UserId} consultando detalle de factura {BillId}", userId, id);
+
+                var bill = await _billingService.GetBillDetailAsync(id);
+
+                if (bill == null)
+                {
+                    return NotFound(new { message = $"Factura con ID {id} no encontrada" });
+                }
+
+                return Ok(bill);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo detalle de factura {BillId}", id);
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
+
+        [HttpGet("company-bills/{id}/pdf")]
+        [ProducesResponseType(typeof(FileContentResult), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult> DownloadBillPdf(int id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("📄 Usuario {UserId} descargando PDF de factura {BillId}", userId, id);
+
+                var billDetail = await _billingService.GetBillDetailAsync(id);
+
+                if (billDetail == null)
+                {
+                    return NotFound(new { message = $"Factura con ID {id} no encontrada" });
+                }
+
+                var pdfBytes = await _pdfService.GenerateInvoicePdfAsync(billDetail);
+                var fileName = $"Factura_{billDetail.Id:D6}_{billDetail.BillingPeriod.Replace("/", "-")}.pdf";
+
+                _logger.LogInformation("✅ PDF generado exitosamente para factura {BillId}, archivo: {FileName}",
+                    id, fileName);
+
+                return File(
+                    pdfBytes,
+                    "application/pdf",
+                    fileName
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error generando PDF para factura {BillId}", id);
+                return StatusCode(500, new { message = "Error interno del servidor generando PDF" });
+            }
         }
     }
 
