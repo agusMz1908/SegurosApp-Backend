@@ -41,7 +41,7 @@ namespace SegurosApp.API.Models
         public string? CompanyRUC { get; set; }
 
         public User User { get; set; } = null!;
-        public PricingTier AppliedTier { get; set; } = null!;
+        public PricingTiers AppliedTier { get; set; } = null!;
         public List<BillingItem> BillingItems { get; set; } = new();
     }
 }

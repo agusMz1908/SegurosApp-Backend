@@ -2,7 +2,7 @@
 
 namespace SegurosApp.API.Models
 {
-    public class PricingTier
+    public class PricingTiers
     {
         public int Id { get; set; }
 

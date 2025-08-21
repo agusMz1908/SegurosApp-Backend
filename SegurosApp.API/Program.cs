@@ -75,6 +75,7 @@ builder.Services.AddScoped<IAzureDocumentService, AzureDocumentService>();
 builder.Services.AddScoped<IVelneoMasterDataService, VelneoMasterDataService>();
 builder.Services.AddScoped<DocumentFieldParser>();
 builder.Services.AddScoped<PolizaMapperService>();
+builder.Services.AddScoped<PricingService>();
 
 builder.Services.AddHttpClient<VelneoMasterDataService>();
 
@@ -241,8 +242,5 @@ if (string.IsNullOrEmpty(azureEndpoint))
     logger.LogWarning("⚠️ Azure Document Intelligence endpoint no configurado");
 else
     logger.LogInformation("🤖 Azure Document Intelligence: Configurado");
-
-logger.LogInformation("🎯 API lista para recibir requests");
-logger.LogInformation("🔑 Credenciales por defecto: admin / admin123");
 
 app.Run();

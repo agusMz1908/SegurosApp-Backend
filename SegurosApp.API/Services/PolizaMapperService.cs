@@ -7,6 +7,7 @@ using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
 using SegurosApp.API.Interfaces;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace SegurosApp.API.Services
@@ -186,8 +187,9 @@ namespace SegurosApp.API.Services
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = scanId,
-                observaciones = FormatObservations(overrides?.Notes, overrides?.UserComments)
+                observaciones = ""
             };
+                request.observaciones = FormatObservations(overrides?.Notes, overrides?.UserComments, request);
 
             await ValidateVelneoRequest(request);
             return request;
@@ -262,7 +264,7 @@ namespace SegurosApp.API.Services
             return result;
         }
 
-        private string FormatObservations(string? notes, string? userComments)
+        private string FormatObservations(string? notes, string? userComments, VelneoPolizaRequest request)
         {
             var parts = new List<string> { "Generado desde escaneo automático." };
 
@@ -272,7 +274,47 @@ namespace SegurosApp.API.Services
             if (!string.IsNullOrWhiteSpace(userComments))
                 parts.Add($"Comentarios: {userComments}");
 
+            if (request.concuo > 1 && request.contot > 0)
+            {
+                var cronograma = GenerarCronogramaCuotas(request);
+                parts.Add(cronograma);
+            }
+
             return string.Join(" ", parts);
+        }
+
+        private string GenerarCronogramaCuotas(VelneoPolizaRequest request)
+        {
+            try
+            {
+                var fechaInicio = DateTime.TryParse(request.confchdes, out var startDate) ? startDate : DateTime.Now;
+                var cantidadCuotas = request.concuo;
+                var montoTotal = request.contot;
+                var montoCuota = Math.Round((decimal)montoTotal / cantidadCuotas, 2);
+                var montoUltimaCuota = montoTotal - (montoCuota * (cantidadCuotas - 1)); 
+
+                var cronograma = new StringBuilder();
+                cronograma.AppendLine();
+                cronograma.AppendLine("=== CRONOGRAMA DE CUOTAS ===");
+                cronograma.AppendLine($"Total: ${montoTotal:N2} en {cantidadCuotas} cuotas");
+                cronograma.AppendLine();
+
+                for (int i = 1; i <= cantidadCuotas; i++)
+                {
+                    var fechaVencimiento = fechaInicio.AddDays(30 * i);
+                    var monto = i == cantidadCuotas ? montoUltimaCuota : montoCuota;
+
+                    cronograma.AppendLine($"Cuota {i:D2}: {fechaVencimiento:dd/MM/yyyy} - ${monto:N2}");
+                }
+
+                cronograma.AppendLine("===============================");
+                return cronograma.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("⚠️ Error generando cronograma de cuotas: {Error}", ex.Message);
+                return "\nError generando cronograma de cuotas.";
+            }
         }
 
         private string GetStringValueWithOverride(string? overrideValue, string defaultValue, string fieldName)
