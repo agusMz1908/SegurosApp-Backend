@@ -231,6 +231,58 @@ namespace SegurosApp.API.Controllers
                 return StatusCode(500, new { message = "Error interno del servidor generando PDF" });
             }
         }
+
+        [HttpGet("monthly-summary/{year}/{month}")]
+        [ProducesResponseType(typeof(MonthlyBillingSummaryDto), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<MonthlyBillingSummaryDto>> GetMonthlySummary(int year, int month)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("📊 Usuario {UserId} consultando resumen mensual {Month}/{Year}", userId, month, year);
+
+                // TODO: Agregar validación de rol admin
+                // if (!IsAdmin()) return Forbid();
+
+                var summary = await _billingService.GetMonthlySummaryAsync(year, month);
+
+                if (summary == null)
+                {
+                    return NotFound(new { message = $"No se encontraron datos para {month}/{year}" });
+                }
+
+                return Ok(summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo resumen mensual {Month}/{Year}", month, year);
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
+
+        [HttpGet("revenue-analytics")]
+        [ProducesResponseType(typeof(RevenueAnalyticsDto), 200)]
+        public async Task<ActionResult<RevenueAnalyticsDto>> GetRevenueAnalytics(
+            [FromQuery] int? months = 12)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("📈 Usuario {UserId} consultando analytics de ingresos últimos {Months} meses", userId, months);
+
+                // TODO: Agregar validación de rol admin
+                // if (!IsAdmin()) return Forbid();
+
+                var analytics = await _billingService.GetRevenueAnalyticsAsync(months ?? 12);
+                return Ok(analytics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error obteniendo analytics de ingresos");
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
     }
 
     public class GenerateCompanyInfoRequest
