@@ -93,7 +93,7 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                var scanResult = await _azureDocumentService.ProcessDocumentAsync(file, userId.Value);
+                var scanResult = await _azureDocumentService.ProcessDocumentAsync(file, userId.Value, companiaId);
                 if (!scanResult.Success)
                 {
                     return BadRequest(new DocumentScanWithContextResponse
@@ -128,7 +128,16 @@ namespace SegurosApp.API.Controllers
                     IsReadyForVelneo = polizaMapping.IsComplete,
                     Message = polizaMapping.IsComplete
                         ? "Documento procesado y mapeado exitosamente - Listo para enviar a Velneo"
-                        : "Documento procesado - Requiere revisión manual antes de enviar"
+                        : "Documento procesado - Requiere revisión manual antes de enviar",
+
+                    AzureModelInfo = new AzureModelUsageInfo
+                    {
+                        ModelId = scanResult.AzureModelUsed ?? "unknown",
+                        CompaniaId = companiaId,
+                        CompaniaName = validationResult.ValidatedData?.CompaniaDisplayName ?? "Unknown",
+                        ProcessedAt = DateTime.UtcNow,
+                        Description = $"Procesado con modelo específico para {validationResult.ValidatedData?.CompaniaDisplayName}"
+                    }
                 };
 
                 _logger.LogInformation("✅ Upload con contexto completado: {ScanId} - Listo para Velneo: {IsReady}",

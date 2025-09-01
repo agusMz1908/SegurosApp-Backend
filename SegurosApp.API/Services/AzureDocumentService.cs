@@ -18,26 +18,28 @@ namespace SegurosApp.API.Services
         private readonly ILogger<AzureDocumentService> _logger;
         private readonly DocumentIntelligenceClient _documentClient;
         private readonly DocumentFieldParser _fieldParser;
+        private readonly IAzureModelMappingService _modelMappingService;
 
         public AzureDocumentService(
             AppDbContext context,
             IConfiguration configuration,
             ILogger<AzureDocumentService> logger,
-            DocumentFieldParser fieldParser)
+            DocumentFieldParser fieldParser,
+            IAzureModelMappingService modelMappingService)
         {
             _context = context;
             _configuration = configuration;
             _logger = logger;
             _fieldParser = fieldParser;
+            _modelMappingService = modelMappingService; 
 
             var endpoint = _configuration["AzureDocumentIntelligence:Endpoint"];
             var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
-            var modelId = _configuration["AzureDocumentIntelligence:ModelId"];
 
             if (string.IsNullOrEmpty(endpoint) || endpoint.Contains("PLACEHOLDER"))
             {
                 _logger.LogError("❌ Azure Endpoint es placeholder o vacío. Usando modo mock.");
-                _documentClient = null; 
+                _documentClient = null;
                 return;
             }
 
@@ -69,15 +71,15 @@ namespace SegurosApp.API.Services
             }
         }
 
-        public async Task<DocumentScanResponse> ProcessDocumentAsync(IFormFile file, int userId)
+        public async Task<DocumentScanResponse> ProcessDocumentAsync(IFormFile file, int userId, int? companiaId = null)
         {
             var startTime = DateTime.UtcNow;
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             try
             {
-                _logger.LogInformation("📄 Procesando documento: {FileName} para usuario: {UserId}",
-                    file.FileName, userId);
+                _logger.LogInformation("📄 Procesando documento: {FileName} para usuario: {UserId}, compañía: {CompaniaId}",
+                    file.FileName, userId, companiaId ?? 0);
 
                 var validationResult = ValidateFile(file);
                 if (!validationResult.IsValid)
@@ -118,11 +120,30 @@ namespace SegurosApp.API.Services
                         IsDuplicate = true,
                         ExistingScanId = existingScan.Id,
                         CreatedAt = existingScan.CreatedAt,
-                        CompletedAt = existingScan.CompletedAt
+                        CompletedAt = existingScan.CompletedAt,
+                        AzureModelUsed = existingScan.AzureModelId,
+                        CompaniaId = existingScan.CompaniaId
                     };
                 }
 
-                var azureResult = await ProcessWithAzureAsync(file);
+                string modelId;
+
+                if (companiaId.HasValue)
+                {
+                    var modelInfo = await _modelMappingService.GetModelByCompaniaIdAsync(companiaId.Value);
+                    modelId = modelInfo.ModelId;
+
+                    _logger.LogInformation("🤖 Modelo seleccionado para compañía {CompaniaId}: {ModelId} - {Description}",
+                        companiaId, modelId, modelInfo.Description);
+                }
+                else
+                {
+                    modelId = _configuration["AzureDocumentIntelligence:ModelId"] ?? "poliza_vehiculos_bse";
+
+                    _logger.LogInformation("🤖 Usando modelo por defecto (sin compañía especificada): {ModelId}", modelId);
+                }
+
+                var azureResult = await ProcessWithAzureAsync(file, modelId);
                 stopwatch.Stop();
 
                 var documentScan = new DocumentScan
@@ -131,6 +152,8 @@ namespace SegurosApp.API.Services
                     FileName = file.FileName,
                     FileSize = file.Length,
                     FileMd5Hash = fileHash,
+                    AzureModelId = modelId, 
+                    CompaniaId = companiaId, 
                     AzureOperationId = azureResult.AzureOperationId,
                     ProcessingTimeMs = (int)stopwatch.ElapsedMilliseconds,
                     SuccessRate = azureResult.SuccessRate,
@@ -161,7 +184,9 @@ namespace SegurosApp.API.Services
                     ExtractedData = azureResult.ExtractedFields,
                     IsDuplicate = false,
                     CreatedAt = startTime,
-                    CompletedAt = DateTime.UtcNow
+                    CompletedAt = DateTime.UtcNow,
+                    AzureModelUsed = modelId,
+                    CompaniaId = companiaId
                 };
             }
             catch (Exception ex)
@@ -346,10 +371,8 @@ namespace SegurosApp.API.Services
             return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
-        private async Task<AzureDocumentResult> ProcessWithAzureAsync(IFormFile file)
+        private async Task<AzureDocumentResult> ProcessWithAzureAsync(IFormFile file, string modelId)
         {
-            var modelId = _configuration["AzureDocumentIntelligence:ModelId"] ?? "poliza_vehiculos_bse";
-
             _logger.LogInformation("🤖 Procesando con Azure modelo: {ModelId}", modelId);
 
             if (_documentClient == null)
@@ -865,6 +888,20 @@ namespace SegurosApp.API.Services
             }
 
             return "";
+        }
+
+        public async Task<List<string>> GetAvailableModelsAsync()
+        {
+            try
+            {
+                var modelInfos = await _modelMappingService.GetAllAvailableModelsAsync();
+                return modelInfos.Select(m => m.ModelId).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo modelos disponibles");
+                return new List<string> { "poliza_vehiculos_bse" }; 
+            }
         }
 
     }

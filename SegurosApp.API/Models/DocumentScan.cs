@@ -23,6 +23,8 @@ namespace SegurosApp.API.Models
 
         [MaxLength(255)]
         public string? AzureOperationId { get; set; }
+        [MaxLength(100)]
+        public string? AzureModelId { get; set; }
 
         public int ProcessingTimeMs { get; set; }
         public decimal SuccessRate { get; set; }

@@ -74,6 +74,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAzureDocumentService, AzureDocumentService>();
 builder.Services.AddScoped<IVelneoMasterDataService, VelneoMasterDataService>();
 builder.Services.AddScoped<IPdfService, PdfService>();
+builder.Services.AddScoped<IAzureModelMappingService, AzureModelMappingService>();
 builder.Services.AddScoped<DocumentFieldParser>();
 builder.Services.AddScoped<PolizaMapperService>();
 builder.Services.AddScoped<PricingService>();

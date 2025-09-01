@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Azure;
+using Azure.AI.DocumentIntelligence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SegurosApp.API.Interfaces;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
-using Azure;
-using Azure.AI.DocumentIntelligence;
 
 namespace SegurosApp.API.Controllers
 {
@@ -506,6 +507,79 @@ namespace SegurosApp.API.Controllers
                     error = ex.Message,
                     modelId = _configuration["AzureDocumentIntelligence:ModelId"]
                 };
+            }
+        }
+
+        [HttpGet("models-by-company")]
+        [ProducesResponseType(typeof(object), 200)]
+        public async Task<ActionResult> GetModelsByCompany()
+        {
+            try
+            {
+                _logger.LogInformation("Obteniendo mapeo de modelos por compañía");
+
+                var modelMappingService = HttpContext.RequestServices.GetRequiredService<IAzureModelMappingService>();
+                var availableModels = await modelMappingService.GetAllAvailableModelsAsync();
+
+                var response = new
+                {
+                    success = true,
+                    totalModels = availableModels.Count,
+                    models = availableModels.Select(m => new
+                    {
+                        modelId = m.ModelId,
+                        modelName = m.ModelName,
+                        companiaId = m.CompaniaId,
+                        companiaAlias = m.CompaniaAlias,
+                        description = m.Description,
+                        isActive = m.IsActive
+                    }).ToList(),
+                    timestamp = DateTime.UtcNow
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo mapeo de modelos");
+                return StatusCode(500, new { success = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost("test-model-selection")]
+        [ProducesResponseType(typeof(object), 200)]
+        public async Task<ActionResult> TestModelSelection([FromForm] int companiaId)
+        {
+            try
+            {
+                _logger.LogInformation("Probando selección de modelo para compañía: {CompaniaId}", companiaId);
+
+                var modelMappingService = HttpContext.RequestServices.GetRequiredService<IAzureModelMappingService>();
+                var modelInfo = await modelMappingService.GetModelByCompaniaIdAsync(companiaId);
+                var hasModel = await modelMappingService.HasModelForCompaniaAsync(companiaId);
+
+                var response = new
+                {
+                    success = true,
+                    companiaId = companiaId,
+                    selectedModel = new
+                    {
+                        modelId = modelInfo.ModelId,
+                        modelName = modelInfo.ModelName,
+                        description = modelInfo.Description,
+                        companiaAlias = modelInfo.CompaniaAlias
+                    },
+                    hasSpecificModel = hasModel,
+                    isDefaultModel = modelInfo.ModelId == "poliza_vehiculos_bse" && companiaId != 1,
+                    timestamp = DateTime.UtcNow
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error probando selección de modelo para compañía {CompaniaId}", companiaId);
+                return StatusCode(500, new { success = false, error = ex.Message });
             }
         }
 
