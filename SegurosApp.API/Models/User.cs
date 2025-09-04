@@ -41,5 +41,10 @@ namespace SegurosApp.API.Models
         public DateTime? LastLoginAt { get; set; }
 
         public bool IsActive { get; set; } = true;
+
+        public int? TenantId { get; set; }
+
+        [ForeignKey("TenantId")]
+        public virtual TenantConfiguration? TenantConfiguration { get; set; }
     }
 }

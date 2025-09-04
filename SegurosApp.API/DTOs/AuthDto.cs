@@ -3,6 +3,25 @@ using System.ComponentModel.DataAnnotations;
 
 namespace SegurosApp.API.DTOs
 {
+
+    public class AuthResponse
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public string? Token { get; set; }
+        public UserInfo? User { get; set; }
+    }
+
+    public class UserInfo
+    {
+        public int Id { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string? CompanyName { get; set; }
+        public int TenantId { get; set; }
+        public string TenantName { get; set; } = string.Empty;
+    }
+
     public class LoginRequest
     {
         [Required]
@@ -23,23 +42,9 @@ namespace SegurosApp.API.DTOs
 
     public class RegisterRequest
     {
-        [Required]
-        [StringLength(50)]
         public string Username { get; set; } = string.Empty;
-
-        [Required]
-        [EmailAddress]
         public string Email { get; set; } = string.Empty;
-
-        [Required]
-        [MinLength(6)]
         public string Password { get; set; } = string.Empty;
-
-        [StringLength(50)]
-        public string? FirstName { get; set; }
-
-        [StringLength(50)]
-        public string? LastName { get; set; }
     }
 
     public class ChangePasswordRequest
