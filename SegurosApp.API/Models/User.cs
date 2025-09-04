@@ -24,24 +24,9 @@ namespace SegurosApp.API.Models
         [MaxLength(255)]
         public string? CompanyName { get; set; }
 
-        [MaxLength(255)]
-        public string? CompanyRUC { get; set; }
-
-        [MaxLength(255)]
-        public string? CompanyAddress { get; set; }
-
-        [MaxLength(255)]
-        public string? ContactPerson { get; set; }
-
-        [MaxLength(255)]
-        public string? ContactPhone { get; set; }
-
         public DateTime? CreatedAt { get; set; }
-
         public DateTime? LastLoginAt { get; set; }
-
         public bool IsActive { get; set; } = true;
-
         public int? TenantId { get; set; }
 
         [ForeignKey("TenantId")]

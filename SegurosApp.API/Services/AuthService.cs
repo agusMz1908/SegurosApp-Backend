@@ -32,9 +32,10 @@ namespace SegurosApp.API.Services
                 _logger.LogInformation("🔐 Intento de login para usuario: {Username}", username);
 
                 var user = await _context.Users
-                    .FirstOrDefaultAsync(u =>
-                        (u.Username == username || u.Email == username) &&
-                        u.IsActive);
+            .Include(u => u.TenantConfiguration) 
+            .FirstOrDefaultAsync(u =>
+                (u.Username == username || u.Email == username) &&
+                u.IsActive);
 
                 if (user == null)
                 {
@@ -45,6 +46,17 @@ namespace SegurosApp.API.Services
                         Message = "Usuario o contraseña incorrectos"
                     };
                 }
+
+                if (!user.TenantId.HasValue || user.TenantConfiguration == null || !user.TenantConfiguration.IsActive)
+                {
+                    _logger.LogWarning("⚠️ Usuario {Username} sin tenant activo", username);
+                    return new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Usuario sin configuración de tenant activa"
+                    };
+                }
+
 
                 bool passwordValid = false;
 
@@ -85,7 +97,6 @@ namespace SegurosApp.API.Services
                         Id = user.Id,
                         Username = user.Username,
                         Email = user.Email,
-                        ContactPerson = user.ContactPerson,
                         CompanyName = user.CompanyName
                     }
                 };
@@ -119,9 +130,7 @@ namespace SegurosApp.API.Services
                 {
                     Username = request.Username,
                     Email = request.Email,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                    ContactPerson = request.FirstName, 
-                    CompanyName = request.LastName,    
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),   
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -137,7 +146,6 @@ namespace SegurosApp.API.Services
                         Id = user.Id,
                         Username = user.Username,
                         Email = user.Email,
-                        ContactPerson = user.ContactPerson,
                         CompanyName = user.CompanyName
                     },
                     "Usuario registrado exitosamente"
@@ -193,7 +201,6 @@ namespace SegurosApp.API.Services
                     Id = user.Id,
                     Username = user.Username,
                     Email = user.Email,
-                    ContactPerson = user.ContactPerson,
                     CompanyName = user.CompanyName
                 };
             }
@@ -238,10 +245,13 @@ namespace SegurosApp.API.Services
             {
                 Subject = new ClaimsIdentity(new[]
                 {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), 
-            new Claim(ClaimTypes.Name, user.Username),               
-            new Claim(ClaimTypes.Email, user.Email),                
-            new Claim(ClaimTypes.Role, "User"),                       
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim("userId", user.Id.ToString()), 
+            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Email, user.Email),
+            new Claim(ClaimTypes.Role, "User"),
+            new Claim("tenantId", user.TenantId.ToString()!), 
+            new Claim("tenantName", user.TenantConfiguration?.TenantName ?? ""), 
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         }),
                 Expires = DateTime.UtcNow.AddHours(GetTokenExpiryHours()),

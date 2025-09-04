@@ -7,6 +7,7 @@ namespace SegurosApp.API.Data
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
+
         }
 
         public DbSet<User> Users { get; set; }
@@ -18,5 +19,31 @@ namespace SegurosApp.API.Data
         public DbSet<BillingItems> BillingItems { get; set; }
         public DbSet<TenantConfiguration> TenantConfigurations { get; set; }
 
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(u => u.TenantConfiguration)
+                      .WithMany()
+                      .HasForeignKey(u => u.TenantId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<TenantConfiguration>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(t => t.CreatedByUser)
+                      .WithMany()
+                      .HasForeignKey(t => t.CreatedBy)
+                      .OnDelete(DeleteBehavior.SetNull);
+                entity.HasOne(t => t.UpdatedByUser)
+                      .WithMany()
+                      .HasForeignKey(t => t.UpdatedBy)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+        }
     }
 }
