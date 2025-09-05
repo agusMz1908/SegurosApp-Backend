@@ -175,12 +175,112 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+        [HttpGet("clientes")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult> GetClientes(
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 20,
+    [FromQuery] string? nombre = null,
+    [FromQuery] string? cliced = null,
+    [FromQuery] string? clicel = null,
+    [FromQuery] string? clitel = null,
+    [FromQuery] string? mail = null,
+    [FromQuery] string? cliruc = null,
+    [FromQuery] bool soloActivos = true)
+        {
+            try
+            {
+                // Validaciones
+                if (page < 1) page = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("Usuario {UserId} obteniendo clientes - Página: {Page}, Tamaño: {PageSize}",
+                    userId, page, pageSize);
+
+                // Construir filtros si se proporcionan
+                ClienteSearchFilters? filters = null;
+                if (!string.IsNullOrEmpty(nombre) || !string.IsNullOrEmpty(cliced) ||
+                    !string.IsNullOrEmpty(clicel) || !string.IsNullOrEmpty(clitel) ||
+                    !string.IsNullOrEmpty(mail) || !string.IsNullOrEmpty(cliruc))
+                {
+                    filters = new ClienteSearchFilters
+                    {
+                        Nombre = nombre,
+                        Cliced = cliced,
+                        Clicel = clicel,
+                        Clitel = clitel,
+                        Mail = mail,
+                        Cliruc = cliruc,
+                        SoloActivos = soloActivos
+                    };
+                    filters.TrimAndCleanFilters();
+                }
+
+                var result = await _masterDataService.GetClientesPaginatedAsync(page, pageSize, filters);
+
+                var response = new
+                {
+                    data = result.Items,
+                    pagination = new
+                    {
+                        page = result.Page,
+                        pageSize = result.PageSize,
+                        count = result.Count,
+                        totalCount = result.TotalCount,
+                        totalPages = result.TotalPages,
+                        hasNextPage = result.HasNextPage,
+                        hasPreviousPage = result.HasPreviousPage,
+                        startIndex = result.StartIndex,
+                        endIndex = result.EndIndex
+                    },
+                    filters = new
+                    {
+                        applied = filters != null,
+                        nombre,
+                        cliced,
+                        clicel,
+                        clitel,
+                        mail,
+                        cliruc,
+                        soloActivos
+                    },
+                    metadata = new
+                    {
+                        timestamp = DateTime.UtcNow,
+                        requestDuration = "calculated_on_frontend"
+                    }
+                };
+
+                _logger.LogInformation("Clientes obtenidos: {Count}/{TotalCount} en página {Page}",
+                    result.Count, result.TotalCount, page);
+
+                return Ok(response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Parámetros inválidos: {Error}", ex.Message);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error de conectividad obteniendo clientes");
+                return StatusCode(503, new { message = "Servicio Velneo temporalmente no disponible" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error inesperado obteniendo clientes");
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
+
         [HttpGet("clientes/search")]
         [ProducesResponseType(typeof(ApiResponse<List<ClienteItem>>), 200)]
         [ProducesResponseType(400)]
-        public async Task<ActionResult<ApiResponse<List<ClienteItem>>>> SearchClientes(
-            [FromQuery] string query,
-            [FromQuery] int limit = 20)
+        public async Task<ActionResult<ApiResponse<List<ClienteItem>>>> SearchClientesQuick(
+            [FromQuery] string? query,
+            [FromQuery] int limit = 10)
         {
             try
             {
@@ -202,14 +302,14 @@ namespace SegurosApp.API.Controllers
                         "Query no puede tener más de 100 caracteres"));
                 }
 
-                if (limit < 1) limit = 20;
-                if (limit > 50) limit = 50; 
+                if (limit < 1) limit = 10;
+                if (limit > 50) limit = 50;
 
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("🔍 Usuario {UserId} buscando clientes: '{Query}' (limit: {Limit})",
+                _logger.LogInformation("Usuario {UserId} búsqueda rápida: '{Query}' (limit: {Limit})",
                     userId, query, limit);
 
-                var clientes = await _masterDataService.SearchClientesAsync(query, limit);
+                var clientes = await _masterDataService.SearchClientesQuickAsync(query, limit);
 
                 var message = clientes.Count switch
                 {
@@ -218,105 +318,25 @@ namespace SegurosApp.API.Controllers
                     _ => $"Se encontraron {clientes.Count} clientes"
                 };
 
-                _logger.LogInformation("✅ Búsqueda clientes completada: {Count} resultados para '{Query}'",
+                _logger.LogInformation("Búsqueda rápida completada: {Count} resultados para '{Query}'",
                     clientes.Count, query);
 
                 return Ok(ApiResponse<List<ClienteItem>>.SuccessResult(clientes, message));
             }
             catch (ArgumentException ex)
             {
-                _logger.LogWarning("⚠️ Parámetros inválidos en búsqueda clientes: {Error}", ex.Message);
+                _logger.LogWarning("Parámetros inválidos en búsqueda rápida: {Error}", ex.Message);
                 return BadRequest(ApiResponse<List<ClienteItem>>.ErrorResult(ex.Message));
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(ex, "❌ Error de conectividad buscando clientes para query '{Query}'", query);
+                _logger.LogError(ex, "Error de conectividad en búsqueda rápida para query '{Query}'", query);
                 return StatusCode(503, ApiResponse<List<ClienteItem>>.ErrorResult(
                     "Servicio Velneo temporalmente no disponible"));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error inesperado buscando clientes para query '{Query}'", query);
-                return StatusCode(500, ApiResponse<List<ClienteItem>>.ErrorResult(
-                    "Error interno del servidor"));
-            }
-        }
-
-        [HttpGet("clientes/advanced-search")]
-        [ProducesResponseType(typeof(ApiResponse<List<ClienteItem>>), 200)]
-        [ProducesResponseType(400)]
-        public async Task<ActionResult<ApiResponse<List<ClienteItem>>>> AdvancedSearchClientes(
-    [FromQuery] string? nombre = null,
-    [FromQuery] string? direcciones = null,
-    [FromQuery] string? clitel = null,
-    [FromQuery] string? clicel = null,
-    [FromQuery] string? mail = null,
-    [FromQuery] string? cliruc = null,
-    [FromQuery] string? cliced = null,
-    [FromQuery] int limit = 20,
-    [FromQuery] bool soloActivos = true)
-        {
-            try
-            {
-                var filters = new ClienteSearchFilters
-                {
-                    Nombre = nombre,
-                    Direcciones = direcciones,
-                    Clitel = clitel,
-                    Clicel = clicel,
-                    Mail = mail,
-                    Cliruc = cliruc,
-                    Cliced = cliced,
-                    Limit = limit,
-                    SoloActivos = soloActivos
-                };
-
-                filters.TrimAndCleanFilters();
-
-                if (!filters.HasAnyFilter())
-                {
-                    return BadRequest(ApiResponse<List<ClienteItem>>.ErrorResult(
-                        "Debe especificar al menos un filtro de búsqueda"));
-                }
-
-                if (!TryValidateModel(filters))
-                {
-                    var errors = ModelState
-                        .Where(x => x.Value?.Errors.Count > 0)
-                        .Select(x => $"{x.Key}: {string.Join(", ", x.Value!.Errors.Select(e => e.ErrorMessage))}")
-                        .ToList();
-
-                    return BadRequest(ApiResponse<List<ClienteItem>>.ErrorResult(
-                        $"Errores de validación: {string.Join("; ", errors)}"));
-                }
-
-                var userId = GetCurrentUserId();
-                _logger.LogInformation("🔍 Usuario {UserId} realizando búsqueda avanzada clientes: {Filters}",
-                    userId, filters.ToString());
-
-                var clientes = await _masterDataService.AdvancedSearchClientesAsync(filters);
-
-                var message = GenerateAdvancedSearchResultMessage(clientes.Count, filters);
-
-                _logger.LogInformation("✅ Búsqueda avanzada completada: {Count} resultados con {ActiveFilters} filtros",
-                    clientes.Count, filters.GetActiveFiltersCount());
-
-                return Ok(ApiResponse<List<ClienteItem>>.SuccessResult(clientes, message));
-            }
-            catch (ArgumentException ex)
-            {
-                _logger.LogWarning("⚠️ Parámetros inválidos en búsqueda avanzada: {Error}", ex.Message);
-                return BadRequest(ApiResponse<List<ClienteItem>>.ErrorResult(ex.Message));
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(ex, "❌ Error de conectividad en búsqueda avanzada clientes");
-                return StatusCode(503, ApiResponse<List<ClienteItem>>.ErrorResult(
-                    "Servicio Velneo temporalmente no disponible"));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Error inesperado en búsqueda avanzada clientes");
+                _logger.LogError(ex, "Error inesperado en búsqueda rápida para query '{Query}'", query);
                 return StatusCode(500, ApiResponse<List<ClienteItem>>.ErrorResult(
                     "Error interno del servidor"));
             }
@@ -337,14 +357,14 @@ namespace SegurosApp.API.Controllers
                 }
 
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("👤 Usuario {UserId} obteniendo detalle cliente {ClienteId}",
+                _logger.LogInformation("Usuario {UserId} obteniendo detalle cliente {ClienteId}",
                     userId, clienteId);
 
                 var cliente = await _masterDataService.GetClienteDetalleAsync(clienteId);
 
                 if (cliente == null)
                 {
-                    _logger.LogWarning("⚠️ Cliente {ClienteId} no encontrado en Velneo", clienteId);
+                    _logger.LogWarning("Cliente {ClienteId} no encontrado en Velneo", clienteId);
                     return NotFound(ApiResponse<ClienteItem>.ErrorResult(
                         $"Cliente con ID {clienteId} no encontrado"));
                 }
@@ -353,25 +373,25 @@ namespace SegurosApp.API.Controllers
                     ? "Detalle del cliente obtenido exitosamente"
                     : "Cliente encontrado pero está marcado como inactivo";
 
-                _logger.LogInformation("✅ Cliente {ClienteId} obtenido: '{DisplayName}' (Activo: {Activo})",
+                _logger.LogInformation("Cliente {ClienteId} obtenido: '{DisplayName}' (Activo: {Activo})",
                     clienteId, cliente.DisplayName, cliente.activo);
 
                 return Ok(ApiResponse<ClienteItem>.SuccessResult(cliente, message));
             }
             catch (FormatException ex)
             {
-                _logger.LogWarning("⚠️ ID de cliente inválido: {ClienteId}", clienteId);
+                _logger.LogWarning("ID de cliente inválido: {ClienteId}", clienteId);
                 return BadRequest(ApiResponse<ClienteItem>.ErrorResult("ID de cliente inválido"));
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(ex, "❌ Error de conectividad obteniendo cliente {ClienteId}", clienteId);
+                _logger.LogError(ex, "Error de conectividad obteniendo cliente {ClienteId}", clienteId);
                 return StatusCode(503, ApiResponse<ClienteItem>.ErrorResult(
                     "Servicio Velneo temporalmente no disponible"));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error inesperado obteniendo detalle cliente {ClienteId}", clienteId);
+                _logger.LogError(ex, "Error inesperado obteniendo detalle cliente {ClienteId}", clienteId);
                 return StatusCode(500, ApiResponse<ClienteItem>.ErrorResult(
                     "Error interno del servidor"));
             }
@@ -587,19 +607,8 @@ namespace SegurosApp.API.Controllers
             }
             return userId;
         }
-
-        private string GenerateAdvancedSearchResultMessage(int count, ClienteSearchFilters filters)
-        {
-            var activeFilters = filters.GetActiveFiltersCount();
-
-            return count switch
-            {
-                0 => $"No se encontraron clientes con los {activeFilters} filtros especificados",
-                1 => $"Se encontró 1 cliente con {activeFilters} filtros aplicados",
-                _ => $"Se encontraron {count} clientes con {activeFilters} filtros aplicados"
-            };
-        }
     }
+
     public class SuggestMappingRequest
     {
         public string FieldName { get; set; } = string.Empty;

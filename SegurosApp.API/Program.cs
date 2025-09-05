@@ -16,7 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 33)));
 });
 
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -48,10 +48,15 @@ builder.Services.AddScoped<ITenantService, TenantService>();
 
 builder.Services.AddHttpClient("MultiTenantVelneo", (serviceProvider, client) =>
 {
-    client.DefaultRequestHeaders.Add("User-Agent", "SegurosApp-MultiTenant/1.0");
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-    var timeoutSeconds = configuration.GetValue<int>("VelneoAPI:TimeoutSeconds", 30);
+    var timeoutSeconds = configuration.GetValue<int>("VelneoAPI:TimeoutSeconds", 60);
+
     client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+    client.DefaultRequestHeaders.Add("User-Agent", "SegurosApp-MultiTenant/1.0");
+
+    // LOG para verificar
+    var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+    logger.LogWarning("DEBUG: Configurando HttpClient timeout: {Timeout} segundos", timeoutSeconds);
 });
 
 builder.Services.AddScoped<IVelneoMasterDataService, MultiTenantVelneoService>();

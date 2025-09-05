@@ -19,10 +19,10 @@ namespace SegurosApp.API.Interfaces
         Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue);
         Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue);
         Task<CreatePolizaResponse> CreatePolizaAsync(VelneoPolizaRequest request);
-        Task<List<ClienteItem>> SearchClientesAsync(string query, int limit = 20);
         Task<ClienteItem?> GetClienteDetalleAsync(int clienteId);
         Task<List<CompaniaItem>> GetCompaniasAsync();
         Task<List<SeccionItem>> GetSeccionesAsync(int? companiaId = null);
-        Task<List<ClienteItem>> AdvancedSearchClientesAsync(ClienteSearchFilters filters);
+        Task<VelneoPaginatedResponse<ClienteItem>> GetClientesPaginatedAsync(int page = 1, int pageSize = 20, ClienteSearchFilters? filters = null);
+        Task<List<ClienteItem>> SearchClientesQuickAsync(string query, int limit = 10);
     }
 }

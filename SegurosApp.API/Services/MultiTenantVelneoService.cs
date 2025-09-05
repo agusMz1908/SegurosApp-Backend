@@ -10,10 +10,6 @@ using System.Text.Json;
 
 namespace SegurosApp.API.Services
 {
-    /// <summary>
-    /// Servicio Multi-Tenant para Velneo que reemplaza VelneoMasterDataService
-    /// Cada usuario usa su propia API Key configurada en TenantConfigurations
-    /// </summary>
     public class MultiTenantVelneoService : IVelneoMasterDataService
     {
         private readonly IHttpClientFactory _httpClientFactory;
@@ -71,18 +67,15 @@ namespace SegurosApp.API.Services
         private async Task<HttpClient> CreateTenantHttpClientAsync()
         {
             var (baseUrl, apiKey) = await GetTenantConfigAsync();
-
             var client = _httpClientFactory.CreateClient("MultiTenantVelneo");
-            client.BaseAddress = new Uri(baseUrl);
 
-            // Limpiar headers existentes y agregar los del tenant específico
+            // DEBUG: Verificar timeout actual
+            _logger.LogWarning("DEBUG: HttpClient timeout: {Timeout} segundos", client.Timeout.TotalSeconds);
+
+            client.BaseAddress = new Uri(baseUrl);
             client.DefaultRequestHeaders.Clear();
             client.DefaultRequestHeaders.Add("ApiKey", apiKey);
-            client.DefaultRequestHeaders.Add("User-Agent", "SegurosApp-MultiTenant/1.0");
-
-            // Timeout desde configuración
-            var timeoutSeconds = _configuration.GetValue<int>("VelneoAPI:TimeoutSeconds", 30);
-            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            // NO agregues User-Agent aquí (ya está en Program.cs)
 
             return client;
         }
@@ -487,130 +480,6 @@ namespace SegurosApp.API.Services
             }
         }
 
-        public async Task<List<ClienteItem>> SearchClientesAsync(string query, int limit = 20)
-        {
-            var cacheKey = GetTenantCacheKey($"v1/velneo_clientes_search_{query}_{limit}");
-
-            if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
-                return cached;
-
-            try
-            {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
-
-                var encodedQuery = Uri.EscapeDataString(query);
-                var url = $"v1/clientes?filter%5Bnombre%5D={encodedQuery}&api_key={apiKey}";
-
-                _logger.LogInformation("🔍 Buscando clientes para tenant con query: '{Query}' (limit: {Limit})", query, limit);
-
-                var response = await client.GetAsync(url);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-
-                    var jsonOptions = new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true,
-                        Converters = {
-                            new NullableDateTimeConverter(),
-                            new DateTimeConverter()
-                        }
-                    };
-
-                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json, jsonOptions);
-
-                    if (velneoResponse?.clientes != null)
-                    {
-                        var clientesFiltrados = velneoResponse.clientes
-                            .Where(c => c.activo)
-                            .Take(limit)
-                            .ToList();
-
-                        _cache.Set(cacheKey, clientesFiltrados, TimeSpan.FromMinutes(5));
-
-                        _logger.LogInformation("✅ Clientes encontrados para tenant: {Count}/{Total} activos para '{Query}'",
-                            clientesFiltrados.Count, velneoResponse.clientes.Count, query);
-
-                        return clientesFiltrados;
-                    }
-                }
-                else
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error buscando clientes para tenant: {StatusCode} - {Error}",
-                        response.StatusCode, error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Excepción buscando clientes para tenant con query '{Query}'", query);
-            }
-
-            return new List<ClienteItem>();
-        }
-
-        public async Task<ClienteItem?> GetClienteDetalleAsync(int clienteId)
-        {
-            var cacheKey = GetTenantCacheKey($"velneo_cliente_detalle_{clienteId}");
-
-            if (_cache.TryGetValue(cacheKey, out ClienteItem? cached) && cached != null)
-            {
-                _logger.LogInformation("💾 Cliente {ClienteId} obtenido desde cache para tenant", clienteId);
-                return cached;
-            }
-
-            try
-            {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
-
-                _logger.LogInformation("👤 Obteniendo detalle cliente para tenant: {ClienteId}", clienteId);
-
-                var response = await client.GetAsync($"v1/clientes/{clienteId}?api_key={apiKey}");
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-
-                    if (!string.IsNullOrWhiteSpace(json))
-                    {
-                        var jsonOptions = new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            Converters = {
-                                new NullableDateTimeConverter(),
-                                new DateTimeConverter()
-                            }
-                        };
-
-                        var cliente = JsonSerializer.Deserialize<ClienteItem>(json, jsonOptions);
-
-                        if (cliente != null)
-                        {
-                            _cache.Set(cacheKey, cliente, TimeSpan.FromMinutes(30));
-                            _logger.LogInformation("✅ Cliente {ClienteId} obtenido para tenant: {Nombre}",
-                                clienteId, cliente.clinom);
-                            return cliente;
-                        }
-                    }
-                }
-                else
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo cliente {ClienteId} para tenant: {StatusCode} - {Error}",
-                        clienteId, response.StatusCode, error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Excepción obteniendo cliente {ClienteId} para tenant", clienteId);
-            }
-
-            return null;
-        }
-
         public async Task<List<CompaniaItem>> GetCompaniasAsync()
         {
             var cacheKey = GetTenantCacheKey("velneo_companias");
@@ -698,62 +567,6 @@ namespace SegurosApp.API.Services
             return new List<SeccionItem>();
         }
 
-        public async Task<List<ClienteItem>> AdvancedSearchClientesAsync(ClienteSearchFilters filters)
-        {
-            try
-            {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
-
-                // Construir URL con filtros
-                var queryParams = new List<string> { $"api_key={apiKey}" };
-
-                if (!string.IsNullOrEmpty(filters.Nombre))
-                    queryParams.Add($"filter[nombre]={Uri.EscapeDataString(filters.Nombre)}");
-                if (!string.IsNullOrEmpty(filters.Cliced))
-                    queryParams.Add($"filter[documento]={Uri.EscapeDataString(filters.Cliced)}");
-
-                var url = $"v1/clientes?{string.Join("&", queryParams)}";
-
-                _logger.LogInformation("🔍 Búsqueda avanzada de clientes para tenant con filtros: {Filters}",
-                    System.Text.Json.JsonSerializer.Serialize(filters));
-
-                var response = await client.GetAsync(url);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json,
-                        new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            Converters = {
-                                new NullableDateTimeConverter(),
-                                new DateTimeConverter()
-                            }
-                        });
-
-                    var clientes = velneoResponse?.clientes ?? new List<ClienteItem>();
-                    _logger.LogInformation("✅ Búsqueda avanzada completada para tenant: {Count} clientes encontrados",
-                        clientes.Count);
-
-                    return clientes;
-                }
-                else
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error en búsqueda avanzada para tenant: {StatusCode} - {Error}",
-                        response.StatusCode, error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Excepción en búsqueda avanzada de clientes para tenant");
-            }
-
-            return new List<ClienteItem>();
-        }
-
         public async Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue)
         {
             // TODO: Implementar lógica de sugerencia basada en datos del tenant
@@ -823,5 +636,241 @@ namespace SegurosApp.API.Services
                 };
             }
         }
+
+        public async Task<VelneoPaginatedResponse<ClienteItem>> GetClientesPaginatedAsync(
+    int page = 1,
+    int pageSize = 20,
+    ClienteSearchFilters? filters = null)
+        {
+            var cacheKey = GetTenantCacheKey($"clientes_page_{page}_{pageSize}_{filters?.GetCacheKey() ?? "all"}");
+
+            if (_cache.TryGetValue(cacheKey, out VelneoPaginatedResponse<ClienteItem>? cached) && cached != null)
+            {
+                _logger.LogDebug("💾 Clientes paginados desde cache para tenant - Página: {Page}", page);
+                return cached;
+            }
+
+            try
+            {
+                using var client = await CreateTenantHttpClientAsync();
+                var (_, apiKey) = await GetTenantConfigAsync();
+
+                var queryParams = new List<string>
+        {
+            $"api_key={apiKey}",
+            $"page[number]={page}",
+            $"page[size]={pageSize}"
+        };
+
+                // Aplicar filtros si existen
+                if (filters != null)
+                {
+                    if (!string.IsNullOrEmpty(filters.Nombre))
+                        queryParams.Add($"filter[nombre]={Uri.EscapeDataString(filters.Nombre)}");
+
+                    if (!string.IsNullOrEmpty(filters.Cliced))
+                        queryParams.Add($"filter[documento]={Uri.EscapeDataString(filters.Cliced)}");
+
+                    if (!string.IsNullOrEmpty(filters.Clicel))
+                        queryParams.Add($"filter[clicel]={Uri.EscapeDataString(filters.Clicel)}");
+
+                    if (!string.IsNullOrEmpty(filters.Clitel))
+                        queryParams.Add($"filter[clitel]={Uri.EscapeDataString(filters.Clitel)}");
+
+                    if (!string.IsNullOrEmpty(filters.Mail))
+                        queryParams.Add($"filter[mail]={Uri.EscapeDataString(filters.Mail)}");
+
+                    if (!string.IsNullOrEmpty(filters.Cliruc))
+                        queryParams.Add($"filter[cliruc]={Uri.EscapeDataString(filters.Cliruc)}");
+
+                    if (filters.SoloActivos)
+                        queryParams.Add("filter[activo]=true");
+                }
+
+                var url = $"v1/clientes?{string.Join("&", queryParams)}";
+
+                _logger.LogInformation("🔍 Obteniendo clientes paginados para tenant - Página: {Page}, Tamaño: {PageSize}", page, pageSize);
+
+                var response = await client.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            Converters = {
+                        new NullableDateTimeConverter(),
+                        new DateTimeConverter()
+                            }
+                        });
+
+                    var result = new VelneoPaginatedResponse<ClienteItem>
+                    {
+                        Items = velneoResponse?.clientes ?? new List<ClienteItem>(),
+                        Count = velneoResponse?.count ?? 0,
+                        TotalCount = velneoResponse?.total_count ?? 0,
+                        Page = page,
+                        PageSize = pageSize
+                    };
+
+                    // Cache más corto para páginas paginadas (2 minutos)
+                    _cache.Set(cacheKey, result, TimeSpan.FromMinutes(2));
+
+                    _logger.LogInformation("✅ Clientes paginados obtenidos para tenant: {Count}/{TotalCount}",
+                        result.Count, result.TotalCount);
+
+                    return result;
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error obteniendo clientes paginados para tenant: {StatusCode} - {Error}",
+                        response.StatusCode, error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción obteniendo clientes paginados para tenant");
+            }
+
+            return new VelneoPaginatedResponse<ClienteItem>();
+        }
+
+        /// <summary>
+        /// Búsqueda rápida de clientes por nombre (para autocomplete/typeahead)
+        /// </summary>
+        public async Task<List<ClienteItem>> SearchClientesQuickAsync(string query, int limit = 10)
+        {
+            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+                return new List<ClienteItem>();
+
+            var cacheKey = GetTenantCacheKey($"clientes_quick_search_{query.ToLower()}_{limit}");
+
+            if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                using var client = await CreateTenantHttpClientAsync();
+                var (_, apiKey) = await GetTenantConfigAsync();
+
+                var queryParams = new List<string>
+        {
+            $"api_key={apiKey}",
+            $"filter[nombre]={Uri.EscapeDataString(query)}",
+            $"page[size]={limit}",
+            "filter[activo]=true"
+        };
+
+                var url = $"v1/clientes?{string.Join("&", queryParams)}";
+
+                _logger.LogInformation("🔍 Búsqueda rápida de clientes para tenant: '{Query}' (limit: {Limit})", query, limit);
+
+                var response = await client.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            Converters = {
+                        new NullableDateTimeConverter(),
+                        new DateTimeConverter()
+                            }
+                        });
+
+                    var clientes = velneoResponse?.clientes ?? new List<ClienteItem>();
+
+                    // Cache corto para búsquedas rápidas (1 minuto)
+                    _cache.Set(cacheKey, clientes, TimeSpan.FromMinutes(1));
+
+                    _logger.LogInformation("✅ Búsqueda rápida completada para tenant: {Count} resultados para '{Query}'",
+                        clientes.Count, query);
+
+                    return clientes;
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en búsqueda rápida para tenant: {StatusCode} - {Error}",
+                        response.StatusCode, error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción en búsqueda rápida de clientes para tenant con query '{Query}'", query);
+            }
+
+            return new List<ClienteItem>();
+        }
+
+        /// <summary>
+        /// Obtiene detalle de un cliente específico (mantenido igual)
+        /// </summary>
+        public async Task<ClienteItem?> GetClienteDetalleAsync(int clienteId)
+        {
+            var cacheKey = GetTenantCacheKey($"cliente_detalle_{clienteId}");
+
+            if (_cache.TryGetValue(cacheKey, out ClienteItem? cached) && cached != null)
+            {
+                _logger.LogInformation("💾 Cliente {ClienteId} obtenido desde cache para tenant", clienteId);
+                return cached;
+            }
+
+            try
+            {
+                using var client = await CreateTenantHttpClientAsync();
+                var (_, apiKey) = await GetTenantConfigAsync();
+
+                _logger.LogInformation("👤 Obteniendo detalle cliente para tenant: {ClienteId}", clienteId);
+
+                var response = await client.GetAsync($"v1/clientes/{clienteId}?api_key={apiKey}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        var jsonOptions = new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            Converters = {
+                        new NullableDateTimeConverter(),
+                        new DateTimeConverter()
+                    }
+                        };
+
+                        var cliente = JsonSerializer.Deserialize<ClienteItem>(json, jsonOptions);
+
+                        if (cliente != null)
+                        {
+                            // Cache más largo para detalles específicos (30 minutos)
+                            _cache.Set(cacheKey, cliente, TimeSpan.FromMinutes(30));
+                            _logger.LogInformation("✅ Cliente {ClienteId} obtenido para tenant: {Nombre}",
+                                clienteId, cliente.clinom);
+                            return cliente;
+                        }
+                    }
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error obteniendo cliente {ClienteId} para tenant: {StatusCode} - {Error}",
+                        clienteId, response.StatusCode, error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción obteniendo cliente {ClienteId} para tenant", clienteId);
+            }
+
+            return null;
+        }
+
     }
 }
