@@ -112,8 +112,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                // 🔧 URL CORREGIDA: usar client.GetAsync directamente con ruta relativa
-                var response = await client.GetAsync($"departamentos?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/departamentos?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -154,7 +153,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"combustibles?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/combustibles?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -195,7 +194,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"corredores?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/corredores?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -236,7 +235,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"categorias?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/categorias?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -277,7 +276,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"destinos?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/destinos?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -318,7 +317,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"calidades?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/calidades?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -359,7 +358,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"tarifas?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/tarifas?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -400,7 +399,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"monedas?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/monedas?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -490,7 +489,7 @@ namespace SegurosApp.API.Services
 
         public async Task<List<ClienteItem>> SearchClientesAsync(string query, int limit = 20)
         {
-            var cacheKey = GetTenantCacheKey($"velneo_clientes_search_{query}_{limit}");
+            var cacheKey = GetTenantCacheKey($"v1/velneo_clientes_search_{query}_{limit}");
 
             if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
                 return cached;
@@ -501,7 +500,7 @@ namespace SegurosApp.API.Services
                 var (_, apiKey) = await GetTenantConfigAsync();
 
                 var encodedQuery = Uri.EscapeDataString(query);
-                var url = $"clientes?filter%5Bnombre%5D={encodedQuery}&api_key={apiKey}";
+                var url = $"v1/clientes?filter%5Bnombre%5D={encodedQuery}&api_key={apiKey}";
 
                 _logger.LogInformation("🔍 Buscando clientes para tenant con query: '{Query}' (limit: {Limit})", query, limit);
 
@@ -569,7 +568,7 @@ namespace SegurosApp.API.Services
 
                 _logger.LogInformation("👤 Obteniendo detalle cliente para tenant: {ClienteId}", clienteId);
 
-                var response = await client.GetAsync($"clientes/{clienteId}?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/clientes/{clienteId}?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -624,7 +623,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                var response = await client.GetAsync($"companias?api_key={apiKey}");
+                var response = await client.GetAsync($"v1/companias?api_key={apiKey}");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -666,8 +665,8 @@ namespace SegurosApp.API.Services
                 var (_, apiKey) = await GetTenantConfigAsync();
 
                 var url = companiaId.HasValue
-                    ? $"secciones?compania_id={companiaId}&api_key={apiKey}"
-                    : $"secciones?api_key={apiKey}";
+                    ? $"v1/secciones?compania_id={companiaId}&api_key={apiKey}"
+                    : $"v1/secciones?api_key={apiKey}";
 
                 var response = await client.GetAsync(url);
 
@@ -714,7 +713,7 @@ namespace SegurosApp.API.Services
                 if (!string.IsNullOrEmpty(filters.Cliced))
                     queryParams.Add($"filter[documento]={Uri.EscapeDataString(filters.Cliced)}");
 
-                var url = $"clientes?{string.Join("&", queryParams)}";
+                var url = $"v1/clientes?{string.Join("&", queryParams)}";
 
                 _logger.LogInformation("🔍 Búsqueda avanzada de clientes para tenant con filtros: {Filters}",
                     System.Text.Json.JsonSerializer.Serialize(filters));
@@ -788,7 +787,7 @@ namespace SegurosApp.API.Services
                 });
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await client.PostAsync($"polizas?api_key={apiKey}", content);
+                var response = await client.PostAsync($"v1/polizas?api_key={apiKey}", content);
 
                 if (response.IsSuccessStatusCode)
                 {

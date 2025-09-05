@@ -96,8 +96,7 @@ namespace SegurosApp.API.Services
                     {
                         Id = user.Id,
                         Username = user.Username,
-                        Email = user.Email,
-                        CompanyName = user.CompanyName
+                        Email = user.Email
                     }
                 };
             }
@@ -145,8 +144,7 @@ namespace SegurosApp.API.Services
                     {
                         Id = user.Id,
                         Username = user.Username,
-                        Email = user.Email,
-                        CompanyName = user.CompanyName
+                        Email = user.Email
                     },
                     "Usuario registrado exitosamente"
                 );
@@ -200,8 +198,7 @@ namespace SegurosApp.API.Services
                 {
                     Id = user.Id,
                     Username = user.Username,
-                    Email = user.Email,
-                    CompanyName = user.CompanyName
+                    Email = user.Email
                 };
             }
             catch (Exception ex)

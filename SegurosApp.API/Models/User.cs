@@ -21,9 +21,6 @@ namespace SegurosApp.API.Models
         [MaxLength(255)]
         public string PasswordHash { get; set; } = string.Empty;
 
-        [MaxLength(255)]
-        public string? CompanyName { get; set; }
-
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastLoginAt { get; set; }
         public bool IsActive { get; set; } = true;
