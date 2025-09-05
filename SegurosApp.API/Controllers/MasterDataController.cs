@@ -1,13 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SegurosApp.API.Converters;
 using SegurosApp.API.DTOs;
 using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
 using SegurosApp.API.Interfaces;
 using System.Security.Claims;
-using System.Text.Json;
 
 namespace SegurosApp.API.Controllers
 {
@@ -101,233 +99,310 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        public async Task<VelneoPaginatedResponse<ContratoItem>> GetPolizasPaginatedAsync(
-    int page = 1,
-    int pageSize = 20,
-    PolizaSearchFilters? filters = null)
+        [HttpGet("polizas")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult> GetPolizas(
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 20,
+    [FromQuery] string? numeroPoliza = null,
+    [FromQuery] int? clienteId = null,
+    [FromQuery] int? companiaId = null,
+    [FromQuery] int? seccionId = null,
+    [FromQuery] string? estado = null,
+    [FromQuery] DateTime? fechaDesde = null,
+    [FromQuery] DateTime? fechaHasta = null,
+    [FromQuery] bool soloActivos = true)
         {
-            var cacheKey = GetTenantCacheKey($"polizas_page_{page}_{pageSize}_{filters?.GetCacheKey() ?? "all"}");
-
-            if (_cache.TryGetValue(cacheKey, out VelneoPaginatedResponse<ContratoItem>? cached) && cached != null)
-            {
-                _logger.LogDebug("💾 Pólizas paginadas desde cache para tenant - Página: {Page}", page);
-                return cached;
-            }
-
             try
             {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
+                if (page < 1) page = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-                var queryParams = new List<string>
-        {
-            $"api_key={apiKey}",
-            $"page[number]={page}",
-            $"page[size]={pageSize}"
-        };
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("Usuario {UserId} obteniendo pólizas - Página: {Page}, Tamaño: {PageSize}",
+                    userId, page, pageSize);
 
-                // Aplicar filtros si existen
-                if (filters != null)
+                PolizaSearchFilters? filters = null;
+                if (!string.IsNullOrEmpty(numeroPoliza) || clienteId.HasValue ||
+                    companiaId.HasValue || seccionId.HasValue ||
+                    !string.IsNullOrEmpty(estado) || fechaDesde.HasValue || fechaHasta.HasValue)
                 {
-                    if (!string.IsNullOrEmpty(filters.NumeroPoliza))
-                        queryParams.Add($"filter[conpol]={Uri.EscapeDataString(filters.NumeroPoliza)}");
-
-                    if (filters.ClienteId.HasValue && filters.ClienteId > 0)
-                        queryParams.Add($"filter[clinro]={filters.ClienteId}");
-
-                    if (filters.CompaniaId.HasValue && filters.CompaniaId > 0)
-                        queryParams.Add($"filter[comcod]={filters.CompaniaId}");
-
-                    if (filters.SeccionId.HasValue && filters.SeccionId > 0)
-                        queryParams.Add($"filter[seccod]={filters.SeccionId}");
-
-                    if (!string.IsNullOrEmpty(filters.Estado))
-                        queryParams.Add($"filter[estado]={Uri.EscapeDataString(filters.Estado)}");
-
-                    if (filters.FechaDesde.HasValue)
-                        queryParams.Add($"filter[fecha_desde]={filters.FechaDesde.Value:yyyy-MM-dd}");
-
-                    if (filters.FechaHasta.HasValue)
-                        queryParams.Add($"filter[fecha_hasta]={filters.FechaHasta.Value:yyyy-MM-dd}");
-
-                    if (filters.SoloActivos)
-                        queryParams.Add("filter[activo]=true");
-                }
-
-                var url = $"v1/contratos?{string.Join("&", queryParams)}";
-
-                _logger.LogInformation("🔍 Obteniendo pólizas paginadas para tenant - Página: {Page}, Tamaño: {PageSize}", page, pageSize);
-
-                var response = await client.GetAsync(url);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var velneoResponse = JsonSerializer.Deserialize<VelneoContratoResponse>(json,
-                        new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            Converters = {
-                        new NullableDateTimeConverter(),
-                        new DateTimeConverter()
-                            }
-                        });
-
-                    var result = new VelneoPaginatedResponse<ContratoItem>
+                    filters = new PolizaSearchFilters
                     {
-                        Items = velneoResponse?.contratos ?? new List<ContratoItem>(),
-                        Count = velneoResponse?.count ?? 0,
-                        TotalCount = velneoResponse?.total_count ?? 0,
-                        Page = page,
-                        PageSize = pageSize
+                        NumeroPoliza = numeroPoliza,
+                        ClienteId = clienteId,
+                        CompaniaId = companiaId,
+                        SeccionId = seccionId,
+                        Estado = estado,
+                        FechaDesde = fechaDesde,
+                        FechaHasta = fechaHasta,
+                        SoloActivos = soloActivos
                     };
+                    filters.TrimAndCleanFilters();
 
-                    _cache.Set(cacheKey, result, TimeSpan.FromMinutes(1));
-
-                    _logger.LogInformation("✅ Pólizas paginadas obtenidas para tenant: {Count}/{TotalCount}",
-                        result.Count, result.TotalCount);
-
-                    return result;
-                }
-                else
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo pólizas paginadas para tenant: {StatusCode} - {Error}",
-                        response.StatusCode, error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Excepción obteniendo pólizas paginadas para tenant");
-            }
-
-            return new VelneoPaginatedResponse<ContratoItem>();
-        }
-
-        public async Task<List<ContratoItem>> SearchPolizasQuickAsync(string numeroPoliza, int limit = 10)
-        {
-            if (string.IsNullOrWhiteSpace(numeroPoliza) || numeroPoliza.Length < 2)
-                return new List<ContratoItem>();
-
-            var cacheKey = GetTenantCacheKey($"polizas_quick_search_{numeroPoliza.ToLower()}_{limit}");
-
-            if (_cache.TryGetValue(cacheKey, out List<ContratoItem>? cached) && cached != null)
-                return cached;
-
-            try
-            {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
-
-                var queryParams = new List<string>
-        {
-            $"api_key={apiKey}",
-            $"filter[conpol]={Uri.EscapeDataString(numeroPoliza)}",
-            $"page[size]={limit}",
-            "filter[activo]=true"
-        };
-
-                var url = $"v1/contratos?{string.Join("&", queryParams)}";
-
-                _logger.LogInformation("🔍 Búsqueda rápida de pólizas para tenant: '{NumeroPoliza}' (limit: {Limit})", numeroPoliza, limit);
-
-                var response = await client.GetAsync(url);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var velneoResponse = JsonSerializer.Deserialize<VelneoContratoResponse>(json,
-                        new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            Converters = {
-                        new NullableDateTimeConverter(),
-                        new DateTimeConverter()
-                            }
-                        });
-
-                    var polizas = velneoResponse?.contratos ?? new List<ContratoItem>();
-
-                    _cache.Set(cacheKey, polizas, TimeSpan.FromSeconds(30));
-
-                    _logger.LogInformation("✅ Búsqueda rápida de pólizas completada para tenant: {Count} resultados para '{NumeroPoliza}'",
-                        polizas.Count, numeroPoliza);
-
-                    return polizas;
-                }
-                else
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error en búsqueda rápida de pólizas para tenant: {StatusCode} - {Error}",
-                        response.StatusCode, error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Excepción en búsqueda rápida de pólizas para tenant con número '{NumeroPoliza}'", numeroPoliza);
-            }
-
-            return new List<ContratoItem>();
-        }
-
-        public async Task<ContratoItem?> GetPolizaDetalleAsync(int polizaId)
-        {
-            var cacheKey = GetTenantCacheKey($"poliza_detalle_{polizaId}");
-
-            if (_cache.TryGetValue(cacheKey, out ContratoItem? cached) && cached != null)
-            {
-                _logger.LogInformation("💾 Póliza {PolizaId} obtenida desde cache para tenant", polizaId);
-                return cached;
-            }
-
-            try
-            {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
-
-                _logger.LogInformation("📋 Obteniendo detalle póliza para tenant: {PolizaId}", polizaId);
-
-                var response = await client.GetAsync($"v1/contratos/{polizaId}?api_key={apiKey}");
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-
-                    if (!string.IsNullOrWhiteSpace(json))
+                    if (fechaDesde.HasValue && fechaHasta.HasValue && fechaDesde > fechaHasta)
                     {
-                        var jsonOptions = new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            Converters = {
-                        new NullableDateTimeConverter(),
-                        new DateTimeConverter()
-                    }
-                        };
-
-                        var poliza = JsonSerializer.Deserialize<ContratoItem>(json, jsonOptions);
-
-                        if (poliza != null)
-                        {
-                            _cache.Set(cacheKey, poliza, TimeSpan.FromMinutes(15));
-                            _logger.LogInformation("✅ Póliza {PolizaId} obtenida para tenant: {NumeroPoliza}",
-                                polizaId, poliza.conpol);
-                            return poliza;
-                        }
+                        return BadRequest(new { message = "La fecha desde no puede ser mayor que la fecha hasta" });
                     }
                 }
-                else
+
+                var result = await _masterDataService.GetPolizasPaginatedAsync(page, pageSize, filters);
+
+                var response = new
                 {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo póliza {PolizaId} para tenant: {StatusCode} - {Error}",
-                        polizaId, response.StatusCode, error);
-                }
+                    data = result.Items,
+                    pagination = new
+                    {
+                        page = result.Page,
+                        pageSize = result.PageSize,
+                        count = result.Count,
+                        totalCount = result.TotalCount,
+                        totalPages = result.TotalPages,
+                        hasNextPage = result.HasNextPage,
+                        hasPreviousPage = result.HasPreviousPage,
+                        startIndex = result.StartIndex,
+                        endIndex = result.EndIndex
+                    },
+                    filters = new
+                    {
+                        applied = filters != null,
+                        numeroPoliza,
+                        clienteId,
+                        companiaId,
+                        seccionId,
+                        estado,
+                        fechaDesde = fechaDesde?.ToString("yyyy-MM-dd"),
+                        fechaHasta = fechaHasta?.ToString("yyyy-MM-dd"),
+                        soloActivos,
+                        activeFiltersCount = filters?.GetActiveFiltersCount() ?? 0
+                    },
+                    metadata = new
+                    {
+                        timestamp = DateTime.UtcNow,
+                        dataType = "polizas"
+                    }
+                };
+
+                _logger.LogInformation("Pólizas obtenidas: {Count}/{TotalCount} en página {Page}",
+                    result.Count, result.TotalCount, page);
+
+                return Ok(response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Parámetros inválidos en pólizas: {Error}", ex.Message);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error de conectividad obteniendo pólizas");
+                return StatusCode(503, new { message = "Servicio Velneo temporalmente no disponible" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción obteniendo póliza {PolizaId} para tenant", polizaId);
+                _logger.LogError(ex, "Error inesperado obteniendo pólizas");
+                return StatusCode(500, new { message = "Error interno del servidor" });
             }
+        }
 
-            return null;
+        /// <summary>
+        /// Búsqueda rápida de pólizas por número para autocomplete
+        /// </summary>
+        [HttpGet("polizas/search")]
+        [ProducesResponseType(typeof(ApiResponse<List<ContratoItem>>), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<ApiResponse<List<ContratoItem>>>> SearchPolizasQuick(
+            [FromQuery] string? numeroPoliza,
+            [FromQuery] int limit = 10)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(numeroPoliza))
+                {
+                    return BadRequest(ApiResponse<List<ContratoItem>>.ErrorResult(
+                        "El parámetro 'numeroPoliza' es requerido"));
+                }
+
+                if (numeroPoliza.Length < 2)
+                {
+                    return BadRequest(ApiResponse<List<ContratoItem>>.ErrorResult(
+                        "El número de póliza debe tener al menos 2 caracteres"));
+                }
+
+                if (numeroPoliza.Length > 50)
+                {
+                    return BadRequest(ApiResponse<List<ContratoItem>>.ErrorResult(
+                        "El número de póliza no puede tener más de 50 caracteres"));
+                }
+
+                if (limit < 1) limit = 10;
+                if (limit > 50) limit = 50;
+
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("Usuario {UserId} búsqueda rápida pólizas: '{NumeroPoliza}' (limit: {Limit})",
+                    userId, numeroPoliza, limit);
+
+                var polizas = await _masterDataService.SearchPolizasQuickAsync(numeroPoliza, limit);
+
+                var message = polizas.Count switch
+                {
+                    0 => $"No se encontraron pólizas para '{numeroPoliza}'",
+                    1 => "Se encontró 1 póliza",
+                    _ => $"Se encontraron {polizas.Count} pólizas"
+                };
+
+                _logger.LogInformation("Búsqueda rápida pólizas completada: {Count} resultados para '{NumeroPoliza}'",
+                    polizas.Count, numeroPoliza);
+
+                return Ok(ApiResponse<List<ContratoItem>>.SuccessResult(polizas, message));
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Parámetros inválidos en búsqueda rápida pólizas: {Error}", ex.Message);
+                return BadRequest(ApiResponse<List<ContratoItem>>.ErrorResult(ex.Message));
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error de conectividad en búsqueda rápida pólizas para '{NumeroPoliza}'", numeroPoliza);
+                return StatusCode(503, ApiResponse<List<ContratoItem>>.ErrorResult(
+                    "Servicio Velneo temporalmente no disponible"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error inesperado en búsqueda rápida pólizas para '{NumeroPoliza}'", numeroPoliza);
+                return StatusCode(500, ApiResponse<List<ContratoItem>>.ErrorResult(
+                    "Error interno del servidor"));
+            }
+        }
+
+        /// <summary>
+        /// Obtiene detalle completo de una póliza específica
+        /// </summary>
+        [HttpGet("polizas/{polizaId}")]
+        [ProducesResponseType(typeof(ApiResponse<ContratoItem>), 200)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<ApiResponse<ContratoItem>>> GetPolizaDetalle(int polizaId)
+        {
+            try
+            {
+                if (polizaId <= 0)
+                {
+                    return BadRequest(ApiResponse<ContratoItem>.ErrorResult(
+                        "ID de póliza debe ser mayor a 0"));
+                }
+
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("Usuario {UserId} obteniendo detalle póliza {PolizaId}",
+                    userId, polizaId);
+
+                var poliza = await _masterDataService.GetPolizaDetalleAsync(polizaId);
+
+                if (poliza == null)
+                {
+                    _logger.LogWarning("Póliza {PolizaId} no encontrada en Velneo", polizaId);
+                    return NotFound(ApiResponse<ContratoItem>.ErrorResult(
+                        $"Póliza con ID {polizaId} no encontrada"));
+                }
+
+                var message = "Detalle de la póliza obtenido exitosamente";
+
+                _logger.LogInformation("Póliza {PolizaId} obtenida: '{NumeroPoliza}' - Cliente: {ClienteId}",
+                    polizaId, poliza.conpol, poliza.clinro);
+
+                return Ok(ApiResponse<ContratoItem>.SuccessResult(poliza, message));
+            }
+            catch (FormatException ex)
+            {
+                _logger.LogWarning("ID de póliza inválido: {PolizaId}", polizaId);
+                return BadRequest(ApiResponse<ContratoItem>.ErrorResult("ID de póliza inválido"));
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error de conectividad obteniendo póliza {PolizaId}", polizaId);
+                return StatusCode(503, ApiResponse<ContratoItem>.ErrorResult(
+                    "Servicio Velneo temporalmente no disponible"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error inesperado obteniendo detalle póliza {PolizaId}", polizaId);
+                return StatusCode(500, ApiResponse<ContratoItem>.ErrorResult(
+                    "Error interno del servidor"));
+            }
+        }
+
+        /// <summary>
+        /// Obtiene pólizas de un cliente específico
+        /// </summary>
+        [HttpGet("clientes/{clienteId}/polizas")]
+        [ProducesResponseType(typeof(object), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult> GetPolizasByCliente(
+            int clienteId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] bool soloActivos = true)
+        {
+            try
+            {
+                if (clienteId <= 0)
+                {
+                    return BadRequest(new { message = "ID de cliente debe ser mayor a 0" });
+                }
+
+                if (page < 1) page = 1;
+                if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("Usuario {UserId} obteniendo pólizas del cliente {ClienteId}",
+                    userId, clienteId);
+
+                var filters = new PolizaSearchFilters
+                {
+                    ClienteId = clienteId,
+                    SoloActivos = soloActivos
+                };
+
+                var result = await _masterDataService.GetPolizasPaginatedAsync(page, pageSize, filters);
+
+                var response = new
+                {
+                    data = result.Items,
+                    pagination = new
+                    {
+                        page = result.Page,
+                        pageSize = result.PageSize,
+                        count = result.Count,
+                        totalCount = result.TotalCount,
+                        totalPages = result.TotalPages,
+                        hasNextPage = result.HasNextPage,
+                        hasPreviousPage = result.HasPreviousPage,
+                        startIndex = result.StartIndex,
+                        endIndex = result.EndIndex
+                    },
+                    cliente = new
+                    {
+                        id = clienteId,
+                        soloActivos
+                    },
+                    metadata = new
+                    {
+                        timestamp = DateTime.UtcNow,
+                        dataType = "polizas_by_cliente"
+                    }
+                };
+
+                _logger.LogInformation("Pólizas del cliente {ClienteId} obtenidas: {Count}/{TotalCount}",
+                    clienteId, result.Count, result.TotalCount);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo pólizas del cliente {ClienteId}", clienteId);
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
         }
 
         [HttpPost("create-poliza")]
