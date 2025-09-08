@@ -820,27 +820,87 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
+                // DEBUG: Verificar configuración
+                var userId = _tenantService.GetCurrentTenantUserId();
+                _logger.LogWarning("🔍 DEBUG CreatePoliza - UserId: {UserId}", userId);
 
+                if (userId == null)
+                {
+                    _logger.LogError("❌ UserId es NULL - usuario no autenticado");
+                    return new CreatePolizaResponse
+                    {
+                        Success = false,
+                        Message = "Usuario no autenticado"
+                    };
+                }
+
+                var (baseUrl, apiKey) = await GetTenantConfigAsync();
+                _logger.LogWarning("🔍 DEBUG CreatePoliza - BaseUrl: {BaseUrl}", baseUrl);
+                _logger.LogWarning("🔍 DEBUG CreatePoliza - ApiKey: {ApiKey}", apiKey?.Substring(0, 8) + "...");
+
+                // Verificar el JSON que se va a enviar
                 var json = JsonSerializer.Serialize(request, new JsonSerializerOptions
                 {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    WriteIndented = true
                 });
+                _logger.LogWarning("🔍 DEBUG CreatePoliza - Request JSON: {Json}", json);
+
+                using var client = await CreateTenantHttpClientAsync();
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await client.PostAsync($"v1/polizas?api_key={apiKey}", content);
+                var fullUrl = $"v1/contratos?api_key={apiKey}";
+                _logger.LogWarning("🔍 DEBUG CreatePoliza - Full URL: {BaseUrl}/{FullUrl}", baseUrl, fullUrl);
+
+                var response = await client.PostAsync(fullUrl, content);
+
+                _logger.LogWarning("🔍 DEBUG CreatePoliza - HTTP Status: {StatusCode}", response.StatusCode);
 
                 if (response.IsSuccessStatusCode)
                 {
                     var responseJson = await response.Content.ReadAsStringAsync();
-                    var createResponse = JsonSerializer.Deserialize<CreatePolizaResponse>(responseJson,
+                    _logger.LogWarning("🔍 DEBUG CreatePoliza - Success Response: {Response}", responseJson);
+                    _logger.LogWarning("🔍 DEBUG CreatePoliza - Response Length: {Length}", responseJson?.Length ?? 0);
+                    _logger.LogWarning("🔍 DEBUG CreatePoliza - Response is null or empty: {IsEmpty}", string.IsNullOrWhiteSpace(responseJson));
+
+                    // Si la respuesta está vacía, no intentar deserializar
+                    if (string.IsNullOrWhiteSpace(responseJson))
+                    {
+                        _logger.LogError("❌ Velneo devolvió respuesta vacía con HTTP 200");
+                        return new CreatePolizaResponse
+                        {
+                            Success = false,
+                            Message = "Velneo devolvió respuesta vacía. Posible problema con la API Key o endpoint."
+                        };
+                    }
+
+                    // Deserializar como respuesta de contratos de Velneo
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoContratoResponse>(responseJson,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                    _logger.LogInformation("✅ Póliza creada exitosamente para tenant: {PolizaId}",
-                        createResponse?.PolizaId);
+                    if (velneoResponse?.contratos?.Count > 0)
+                    {
+                        var polizaCreada = velneoResponse.contratos[0];
+                        _logger.LogInformation("✅ Póliza creada exitosamente para tenant: {PolizaId}", polizaCreada.id);
 
-                    return createResponse ?? new CreatePolizaResponse { Success = false, Message = "Respuesta inválida" };
+                        return new CreatePolizaResponse
+                        {
+                            Success = true,
+                            VelneoPolizaId = polizaCreada.id,
+                            PolizaNumber = polizaCreada.conpol,
+                            Message = "Póliza creada exitosamente",
+                            PolizaId = polizaCreada.id
+                        };
+                    }
+                    else
+                    {
+                        _logger.LogError("❌ Velneo no devolvió contratos en la respuesta");
+                        return new CreatePolizaResponse
+                        {
+                            Success = false,
+                            Message = "Velneo no devolvió información de la póliza creada"
+                        };
+                    }
                 }
                 else
                 {
