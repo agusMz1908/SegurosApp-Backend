@@ -14,6 +14,7 @@
         public string confchhas { get; set; } = "";   // Fecha hasta
         public int conpremio { get; set; } = 0;       // Premio
         public int contot { get; set; } = 0;          // Total
+        public int? conpadre { get; set; }
 
         // ✅ DATOS DEL VEHÍCULO
         public string conmaraut { get; set; } = "";   // Marca

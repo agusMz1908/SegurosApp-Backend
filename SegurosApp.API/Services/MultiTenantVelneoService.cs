@@ -926,6 +926,197 @@ namespace SegurosApp.API.Services
             }
         }
 
+        /// <summary>
+        /// Actualiza los estados de una póliza existente
+        /// </summary>
+        public async Task<UpdatePolizaResponse> UpdatePolizaEstadosAsync(int polizaId)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Marcando póliza {PolizaId} como ANT/Terminado", polizaId);
+
+                var (_, apiKey) = await GetTenantConfigAsync();
+                using var client = await CreateTenantHttpClientAsync();
+
+                // Preparar el request con los campos correctos
+                var updateRequest = new
+                {
+                    convig = "2",     // Estado ANT (Antecedente)
+                    congeses = "4"    // Trámite Terminado
+                };
+
+                var json = JsonSerializer.Serialize(updateRequest, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                _logger.LogInformation("📝 JSON de actualización: {Json}", json);
+
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                // ✅ CAMBIO: Usar POST en lugar de PUT
+                var fullUrl = $"v1/contratos/{polizaId}?api_key={apiKey}";
+
+                // ✅ CAMBIO: PostAsync en lugar de PutAsync
+                var response = await client.PostAsync(fullUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                _logger.LogInformation("📡 HTTP Status: {StatusCode}, Response: {Response}",
+                    response.StatusCode, responseContent);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("✅ Póliza {PolizaId} marcada como ANT/Terminado exitosamente", polizaId);
+
+                    return new UpdatePolizaResponse
+                    {
+                        Success = true,
+                        Message = "Póliza marcada como antecedente/terminado correctamente",
+                        PolizaId = polizaId,
+                        UpdatedFields = "convig=2 (ANT), congeses=4 (Terminado)",
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                }
+                else
+                {
+                    _logger.LogError("❌ Error actualizando póliza {PolizaId}: {StatusCode} - {Error}",
+                        polizaId, response.StatusCode, responseContent);
+
+                    return new UpdatePolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Error HTTP {response.StatusCode}: {responseContent}",
+                        PolizaId = polizaId
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción actualizando póliza {PolizaId}", polizaId);
+                return new UpdatePolizaResponse
+                {
+                    Success = false,
+                    Message = $"Excepción: {ex.Message}",
+                    PolizaId = polizaId
+                };
+            }
+        }
+
+        /// <summary>
+        /// Realiza un cambio de póliza completo
+        /// </summary>
+        public async Task<ModifyPolizaResponse> ModifyPolizaAsync(VelneoPolizaRequest request, int polizaAnteriorId, string tipoCambio, string? observaciones = null)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Iniciando cambio de póliza - Anterior: {PolizaAnteriorId}, Tipo: {TipoCambio}",
+                    polizaAnteriorId, tipoCambio);
+
+                // 1. Verificar que la póliza anterior existe
+                var polizaAnterior = await GetPolizaDetalleAsync(polizaAnteriorId);
+                if (polizaAnterior == null)
+                {
+                    _logger.LogError("❌ Póliza anterior {PolizaAnteriorId} no encontrada", polizaAnteriorId);
+                    return new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Póliza anterior {polizaAnteriorId} no encontrada",
+                        PolizaAnteriorId = polizaAnteriorId,
+                        TipoCambio = tipoCambio
+                    };
+                }
+
+                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
+
+                // 2. Actualizar estados de la póliza anterior
+                var updateResult = await UpdatePolizaEstadosAsync(polizaAnteriorId);
+
+                if (!updateResult.Success)
+                {
+                    _logger.LogError("❌ Error actualizando póliza anterior {PolizaAnteriorId}: {Message}",
+                        polizaAnteriorId, updateResult.Message);
+
+                    return new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Error actualizando póliza anterior: {updateResult.Message}",
+                        PolizaAnteriorId = polizaAnteriorId,
+                        TipoCambio = tipoCambio,
+                        PolizaAnteriorActualizada = false,
+                        MensajePolizaAnterior = updateResult.Message
+                    };
+                }
+
+                _logger.LogInformation("✅ Póliza anterior actualizada correctamente");
+
+                request.conpadre = polizaAnteriorId;
+                request.contra = "3";
+                request.congeses = "5";
+
+                var observacionesCompletas = $"Cambio de póliza {polizaAnteriorId}. Tipo: {tipoCambio}";
+                if (!string.IsNullOrEmpty(observaciones))
+                {
+                    observacionesCompletas += $". {observaciones}";
+                }
+                request.observaciones = observacionesCompletas;
+
+                _logger.LogInformation("📝 Creando nueva póliza con conpadre: {ConPadre}", request.conpadre);
+
+                var createResult = await CreatePolizaAsync(request);
+
+                if (createResult.Success)
+                {
+                    _logger.LogInformation("✅ Cambio de póliza completado exitosamente - Nueva: {NuevaPolizaId}, Anterior: {AnteriorPolizaId}",
+                        createResult.VelneoPolizaId, polizaAnteriorId);
+
+                    return new ModifyPolizaResponse
+                    {
+                        Success = true,
+                        Message = "Cambio de póliza realizado exitosamente",
+                        VelneoPolizaId = createResult.VelneoPolizaId,
+                        PolizaNumber = createResult.PolizaNumber,
+                        CreatedAt = createResult.CreatedAt,
+                        Warnings = createResult.Warnings,
+                        Validation = createResult.Validation,
+                        PolizaAnteriorId = polizaAnteriorId,
+                        TipoCambio = tipoCambio,
+                        PolizaAnteriorActualizada = true,
+                        MensajePolizaAnterior = updateResult.Message
+                    };
+                }
+                else
+                {
+                    _logger.LogError("❌ Error creando nueva póliza: {Message}", createResult.Message);
+
+                    // Si falló la creación, podrías considerar revertir la actualización de la póliza anterior
+                    // aunque esto dependería de tu lógica de negocio
+
+                    return new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Error creando nueva póliza: {createResult.Message}",
+                        PolizaAnteriorId = polizaAnteriorId,
+                        TipoCambio = tipoCambio,
+                        PolizaAnteriorActualizada = true,
+                        MensajePolizaAnterior = updateResult.Message,
+                        ErrorMessage = createResult.Message
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción durante cambio de póliza {PolizaAnteriorId}", polizaAnteriorId);
+                return new ModifyPolizaResponse
+                {
+                    Success = false,
+                    Message = $"Excepción: {ex.Message}",
+                    PolizaAnteriorId = polizaAnteriorId,
+                    TipoCambio = tipoCambio,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
         public async Task<VelneoPaginatedResponse<ClienteItem>> GetClientesPaginatedAsync(
     int page = 1,
     int pageSize = 20,

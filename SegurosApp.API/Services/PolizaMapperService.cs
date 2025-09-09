@@ -190,7 +190,8 @@ namespace SegurosApp.API.Services
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = scanId,
-                observaciones = ""
+                observaciones = "",
+                conpadre = 0
             };
             request.observaciones = FormatObservations(overrides?.Notes, overrides?.UserComments, request, normalizedData);
 

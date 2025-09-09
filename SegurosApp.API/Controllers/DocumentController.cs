@@ -396,6 +396,142 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+        [HttpPost("{scanId}/modify-in-velneo")]
+        [ProducesResponseType(typeof(ModifyPolizaResponse), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(401)]
+        [Authorize]
+        public async Task<ActionResult<ModifyPolizaResponse>> ModifyPolizaInVelneo(
+            int scanId,
+            [FromBody] ModifyPolizaRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Iniciando cambio de póliza para scan {ScanId} - Póliza anterior: {PolizaAnteriorId}",
+                    scanId, request.PolizaAnteriorId);
+
+                // 1. Validaciones básicas
+                if (request.PolizaAnteriorId <= 0)
+                {
+                    return BadRequest(new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = "ID de póliza anterior es requerido",
+                        TipoCambio = request.TipoCambio
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.TipoCambio))
+                {
+                    return BadRequest(new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = "Tipo de cambio es requerido",
+                        PolizaAnteriorId = request.PolizaAnteriorId
+                    });
+                }
+
+                // 2. Obtener información del usuario actual
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return Unauthorized(new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = "Usuario no autenticado"
+                    });
+                }
+
+                // 3. Validar que existe el scan y pertenece al usuario
+                var scan = await _context.DocumentScans
+                    .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
+
+                if (scan == null)
+                {
+                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
+                    return NotFound(new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Scan {scanId} no encontrado"
+                    });
+                }
+
+                // 4. Verificar que la póliza anterior existe en Velneo
+                var polizaAnterior = await _masterDataService.GetPolizaDetalleAsync(request.PolizaAnteriorId);
+                if (polizaAnterior == null)
+                {
+                    _logger.LogWarning("⚠️ Póliza anterior {PolizaAnteriorId} no encontrada en Velneo", request.PolizaAnteriorId);
+                    return BadRequest(new ModifyPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Póliza anterior {request.PolizaAnteriorId} no encontrada",
+                        PolizaAnteriorId = request.PolizaAnteriorId,
+                        TipoCambio = request.TipoCambio
+                    });
+                }
+
+                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
+
+                // 5. Mapear el scan a VelneoPolizaRequest usando el PolizaMapperService
+                var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value);
+
+                _logger.LogInformation("📝 Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
+                    velneoRequest.clinro, velneoRequest.comcod, velneoRequest.conpol);
+
+                // 6. Ejecutar el cambio de póliza
+                var result = await _masterDataService.ModifyPolizaAsync(
+                    velneoRequest,
+                    request.PolizaAnteriorId,
+                    request.TipoCambio,
+                    request.Observaciones);
+
+                // 7. Actualizar información de billing si el cambio fue exitoso
+                if (result.Success && result.VelneoPolizaId.HasValue)
+                {
+                    try
+                    {
+                        await UpdateScanWithVelneoInfoAsync(scanId, result.PolizaNumber, true);
+                        _logger.LogInformation("💰 Billing actualizado para scan {ScanId}", scanId);
+                    }
+                    catch (Exception billingEx)
+                    {
+                        _logger.LogWarning(billingEx, "⚠️ Error actualizando billing para scan {ScanId}, pero el cambio fue exitoso", scanId);
+                        // No fallar toda la operación por un error de billing
+                    }
+                }
+
+                // 8. Log del resultado
+                if (result.Success)
+                {
+                    _logger.LogInformation("✅ Cambio de póliza completado exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
+                        scanId, result.VelneoPolizaId, request.PolizaAnteriorId);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Cambio de póliza falló - Scan: {ScanId}, Error: {Message}",
+                        scanId, result.Message);
+                }
+
+                // 9. Retornar el resultado
+                result.ScanId = scanId; // Asegurar que el ScanId esté en la respuesta
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error realizando cambio de póliza para scan {ScanId}", scanId);
+                return StatusCode(500, new ModifyPolizaResponse
+                {
+                    Success = false,
+                    Message = "Error interno del servidor",
+                    ErrorMessage = "Se produjo un error inesperado al procesar el cambio",
+                    ScanId = scanId,
+                    PolizaAnteriorId = request.PolizaAnteriorId,
+                    TipoCambio = request.TipoCambio
+                });
+            }
+        }
+
         [HttpPost("upload")]
         [ProducesResponseType(typeof(DocumentScanResponse), 200)]
         [ProducesResponseType(400)]
@@ -1060,6 +1196,17 @@ namespace SegurosApp.API.Controllers
             {
                 _logger.LogError(ex, "❌ Error guardando contexto en scan {ScanId}", scanId);
                 throw;
+            }
+        }
+
+        private async Task UpdateScanWithVelneoInfoAsync(int scanId, string? polizaNumber, bool velneoCreated)
+        {
+            var scan = await _context.DocumentScans.FindAsync(scanId);
+            if (scan != null)
+            {
+                scan.VelneoPolizaNumber = polizaNumber;
+                scan.VelneoCreated = velneoCreated;
+                await _context.SaveChangesAsync();
             }
         }
     }
