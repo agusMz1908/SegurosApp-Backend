@@ -18,6 +18,7 @@ namespace SegurosApp.API.Data
         public DbSet<MonthlyBilling> MonthlyBilling { get; set; }
         public DbSet<BillingItems> BillingItems { get; set; }
         public DbSet<TenantConfiguration> TenantConfigurations { get; set; }
+        public DbSet<VelneoOperationMetric> VelneoOperationMetrics { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -43,6 +44,21 @@ namespace SegurosApp.API.Data
                       .WithMany()
                       .HasForeignKey(t => t.UpdatedBy)
                       .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<VelneoOperationMetric>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.CreatedAt);
+                entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+                entity.HasIndex(e => new { e.OperationType, e.Success });
+
+                entity.HasOne(e => e.User)
+                      .WithMany()
+                      .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

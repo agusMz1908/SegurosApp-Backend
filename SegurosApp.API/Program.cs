@@ -9,10 +9,6 @@ using SegurosApp.API.Middleware;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// ================================================
-// DATABASE & AUTHENTICATION
-// ================================================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
@@ -40,9 +36,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// ================================================
-// MULTI-TENANT SERVICES
-// ================================================
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantService, TenantService>();
 
@@ -54,16 +47,11 @@ builder.Services.AddHttpClient("MultiTenantVelneo", (serviceProvider, client) =>
     client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
     client.DefaultRequestHeaders.Add("User-Agent", "SegurosApp-MultiTenant/1.0");
 
-    // LOG para verificar
     var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
     logger.LogWarning("DEBUG: Configurando HttpClient timeout: {Timeout} segundos", timeoutSeconds);
 });
 
 builder.Services.AddScoped<IVelneoMasterDataService, MultiTenantVelneoService>();
-
-// ================================================
-// APPLICATION SERVICES
-// ================================================
 builder.Services.AddControllers();
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -74,10 +62,8 @@ builder.Services.AddScoped<DocumentFieldParser>();
 builder.Services.AddScoped<IAzureModelMappingService, AzureModelMappingService>();
 builder.Services.AddScoped<PolizaMapperService>();
 builder.Services.AddScoped<IPdfService, PdfService>();
+builder.Services.AddScoped<IVelneoMetricsService, VelneoMetricsService>();
 
-// ================================================
-// CORS & SWAGGER
-// ================================================
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -119,9 +105,6 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ================================================
-// BUILD APP
-// ================================================
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -137,13 +120,10 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();
-app.UseTenantResolution(); // Multi-tenant middleware
+app.UseTenantResolution(); 
 app.UseAuthorization();
 app.MapControllers();
 
-// ================================================
-// SIMPLE DATABASE CHECK (NO AUTO-CREATION)
-// ================================================
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();

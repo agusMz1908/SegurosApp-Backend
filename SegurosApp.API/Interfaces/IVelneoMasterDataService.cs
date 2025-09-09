@@ -32,5 +32,6 @@ namespace SegurosApp.API.Interfaces
 
         Task<UpdatePolizaResponse> UpdatePolizaEstadosAsync(int polizaId);
         Task<ModifyPolizaResponse> ModifyPolizaAsync(VelneoPolizaRequest request, int polizaAnteriorId, string tipoCambio, string? observaciones = null);
+        Task<RenewPolizaResponse> RenewPolizaAsync(VelneoPolizaRequest request, int polizaAnteriorId, string? observaciones = null, bool validarVencimiento = true);
     }
 }

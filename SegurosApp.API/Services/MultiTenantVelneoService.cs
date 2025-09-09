@@ -1117,6 +1117,187 @@ namespace SegurosApp.API.Services
             }
         }
 
+        public async Task<RenewPolizaResponse> RenewPolizaAsync(VelneoPolizaRequest request, int polizaAnteriorId, string? observaciones = null, bool validarVencimiento = true)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Iniciando renovación de póliza - Anterior: {PolizaAnteriorId}", polizaAnteriorId);
+
+                // 1. Verificar que la póliza anterior existe
+                var polizaAnterior = await GetPolizaDetalleAsync(polizaAnteriorId);
+                if (polizaAnterior == null)
+                {
+                    _logger.LogError("❌ Póliza anterior {PolizaAnteriorId} no encontrada", polizaAnteriorId);
+                    return new RenewPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Póliza anterior {polizaAnteriorId} no encontrada",
+                        PolizaAnteriorId = polizaAnteriorId
+                    };
+                }
+
+                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
+
+                // 2. Validar vencimiento si está habilitado
+                DateTime? fechaVencimiento = null;
+                if (validarVencimiento)
+                {
+                    fechaVencimiento = ParseVelneoDate(polizaAnterior.confchhas);
+                    if (fechaVencimiento.HasValue)
+                    {
+                        var diasParaVencimiento = (fechaVencimiento.Value - DateTime.Now).Days;
+
+                        _logger.LogInformation("📅 Póliza vence el {FechaVencimiento}, días restantes: {Dias}",
+                            fechaVencimiento.Value.ToString("dd/MM/yyyy"), diasParaVencimiento);
+
+                        // Validar que esté dentro del período permitido para renovación
+                        if (diasParaVencimiento > 60) // Más de 2 meses antes
+                        {
+                            return new RenewPolizaResponse
+                            {
+                                Success = false,
+                                Message = $"La póliza vence el {fechaVencimiento.Value:dd/MM/yyyy}. Solo se puede renovar hasta 60 días antes del vencimiento.",
+                                PolizaAnteriorId = polizaAnteriorId,
+                                FechaVencimientoAnterior = fechaVencimiento,
+                                VencimientoValidado = true
+                            };
+                        }
+
+                        if (diasParaVencimiento < -30) // Más de 30 días vencida
+                        {
+                            return new RenewPolizaResponse
+                            {
+                                Success = false,
+                                Message = $"La póliza venció el {fechaVencimiento.Value:dd/MM/yyyy}. No se puede renovar una póliza vencida hace más de 30 días.",
+                                PolizaAnteriorId = polizaAnteriorId,
+                                FechaVencimientoAnterior = fechaVencimiento,
+                                VencimientoValidado = true
+                            };
+                        }
+                    }
+                }
+
+                // 3. Actualizar estados de la póliza anterior (mismo método que cambios)
+                var updateResult = await UpdatePolizaEstadosAsync(polizaAnteriorId);
+
+                if (!updateResult.Success)
+                {
+                    _logger.LogError("❌ Error actualizando póliza anterior {PolizaAnteriorId}: {Message}",
+                        polizaAnteriorId, updateResult.Message);
+
+                    return new RenewPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Error actualizando póliza anterior: {updateResult.Message}",
+                        PolizaAnteriorId = polizaAnteriorId,
+                        FechaVencimientoAnterior = fechaVencimiento,
+                        PolizaAnteriorActualizada = false,
+                        MensajePolizaAnterior = updateResult.Message,
+                        VencimientoValidado = validarVencimiento
+                    };
+                }
+
+                _logger.LogInformation("✅ Póliza anterior actualizada correctamente");
+
+                // 4. Preparar la nueva póliza con configuración específica para renovación
+                request.conpadre = polizaAnteriorId;
+                request.contra = "2";  
+
+                // 5. Ajustar fechas para renovación
+                if (fechaVencimiento.HasValue)
+                {
+                    // La nueva póliza debe comenzar cuando vence la anterior
+                    request.confchdes = fechaVencimiento.Value.AddDays(1).ToString("yyyy-MM-dd");
+
+                    // Si no hay fecha de fin especificada, usar un año más
+                    if (string.IsNullOrEmpty(request.confchhas))
+                    {
+                        request.confchhas = fechaVencimiento.Value.AddYears(1).ToString("yyyy-MM-dd");
+                    }
+                }
+
+                // Agregar información de la renovación a las observaciones
+                var observacionesCompletas = $"Renovación de póliza {polizaAnteriorId}";
+                if (fechaVencimiento.HasValue)
+                {
+                    observacionesCompletas += $". Vencimiento anterior: {fechaVencimiento.Value:dd/MM/yyyy}";
+                }
+                if (!string.IsNullOrEmpty(observaciones))
+                {
+                    observacionesCompletas += $". {observaciones}";
+                }
+                request.observaciones = observacionesCompletas;
+
+                _logger.LogInformation("📝 Creando nueva póliza con conpadre: {ConPadre} y trámite: Renovación (2)", request.conpadre);
+                _logger.LogInformation("📅 Fechas renovación - Desde: {FechaDesde}, Hasta: {FechaHasta}",
+                    request.confchdes, request.confchhas);
+
+                // 6. Crear la nueva póliza
+                var createResult = await CreatePolizaAsync(request);
+
+                if (createResult.Success)
+                {
+                    _logger.LogInformation("✅ Renovación de póliza completada exitosamente - Nueva: {NuevaPolizaId}, Anterior: {AnteriorPolizaId}",
+                        createResult.VelneoPolizaId, polizaAnteriorId);
+
+                    return new RenewPolizaResponse
+                    {
+                        Success = true,
+                        Message = "Renovación de póliza realizada exitosamente",
+                        VelneoPolizaId = createResult.VelneoPolizaId,
+                        PolizaNumber = createResult.PolizaNumber,
+                        CreatedAt = createResult.CreatedAt,
+                        Warnings = createResult.Warnings,
+                        Validation = createResult.Validation,
+                        PolizaAnteriorId = polizaAnteriorId,
+                        FechaVencimientoAnterior = fechaVencimiento,
+                        PolizaAnteriorActualizada = true,
+                        MensajePolizaAnterior = updateResult.Message,
+                        VencimientoValidado = validarVencimiento
+                    };
+                }
+                else
+                {
+                    _logger.LogError("❌ Error creando nueva póliza en renovación: {Message}", createResult.Message);
+
+                    return new RenewPolizaResponse
+                    {
+                        Success = false,
+                        Message = $"Error creando nueva póliza: {createResult.Message}",
+                        PolizaAnteriorId = polizaAnteriorId,
+                        FechaVencimientoAnterior = fechaVencimiento,
+                        PolizaAnteriorActualizada = true,
+                        MensajePolizaAnterior = updateResult.Message,
+                        VencimientoValidado = validarVencimiento,
+                        ErrorMessage = createResult.Message
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción durante renovación de póliza {PolizaAnteriorId}", polizaAnteriorId);
+                return new RenewPolizaResponse
+                {
+                    Success = false,
+                    Message = $"Excepción: {ex.Message}",
+                    PolizaAnteriorId = polizaAnteriorId,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        private DateTime? ParseVelneoDate(string? velneoDate)
+        {
+            if (string.IsNullOrEmpty(velneoDate)) return null;
+
+            if (DateTime.TryParse(velneoDate, out DateTime result))
+            {
+                return result;
+            }
+
+            return null;
+        }
+
         public async Task<VelneoPaginatedResponse<ClienteItem>> GetClientesPaginatedAsync(
     int page = 1,
     int pageSize = 20,
