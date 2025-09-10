@@ -18,7 +18,6 @@ namespace SegurosApp.API.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<MultiTenantVelneoService> _logger;
 
-        // URL default desde configuración (fallback)
         private string DefaultBaseUrl => _configuration["VelneoAPI:BaseUrl"];
 
         public MultiTenantVelneoService(
@@ -35,60 +34,7 @@ namespace SegurosApp.API.Services
             _logger = logger;
         }
 
-        // ===============================================
-        // Métodos auxiliares para Multi-Tenant
-        // ===============================================
-
-        private async Task<(string baseUrl, string apiKey)> GetTenantConfigAsync()
-        {
-            var userId = _tenantService.GetCurrentTenantUserId();
-            if (userId == null)
-            {
-                throw new UnauthorizedAccessException("Usuario no autenticado o UserId no encontrado");
-            }
-
-            var apiKey = await _tenantService.GetTenantApiKeyAsync(userId.Value);
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                throw new UnauthorizedAccessException($"API Key de Velneo no configurada para el usuario {userId}");
-            }
-
-            var baseUrl = await _tenantService.GetTenantBaseUrlAsync(userId.Value) ?? DefaultBaseUrl;
-            if (string.IsNullOrEmpty(baseUrl))
-            {
-                throw new InvalidOperationException("URL base de Velneo no configurada");
-            }
-
-            _logger.LogDebug("🏢 Usando configuración de tenant - UserId: {UserId}, BaseUrl: {BaseUrl}", userId, baseUrl);
-
-            return (baseUrl, apiKey);
-        }
-
-        private async Task<HttpClient> CreateTenantHttpClientAsync()
-        {
-            var (baseUrl, apiKey) = await GetTenantConfigAsync();
-            var client = _httpClientFactory.CreateClient("MultiTenantVelneo");
-
-            // DEBUG: Verificar timeout actual
-            _logger.LogWarning("DEBUG: HttpClient timeout: {Timeout} segundos", client.Timeout.TotalSeconds);
-
-            client.BaseAddress = new Uri(baseUrl);
-            client.DefaultRequestHeaders.Clear();
-            client.DefaultRequestHeaders.Add("ApiKey", apiKey);
-            // NO agregues User-Agent aquí (ya está en Program.cs)
-
-            return client;
-        }
-
-        private string GetTenantCacheKey(string baseKey)
-        {
-            var userId = _tenantService.GetCurrentTenantUserId();
-            return $"{baseKey}_tenant_{userId}";
-        }
-
-        // ===============================================
-        // Implementación de IVelneoMasterDataService
-        // ===============================================
+        #region Maestros
 
         public async Task<List<DepartamentoItem>> GetDepartamentosAsync()
         {
@@ -96,7 +42,7 @@ namespace SegurosApp.API.Services
 
             if (_cache.TryGetValue(cacheKey, out List<DepartamentoItem>? cached) && cached != null)
             {
-                _logger.LogDebug("💾 Departamentos desde cache para tenant");
+                _logger.LogDebug("Departamentos desde cache para tenant");
                 return cached;
             }
 
@@ -116,19 +62,19 @@ namespace SegurosApp.API.Services
                     var departamentos = velneoResponse?.departamentos ?? new List<DepartamentoItem>();
                     _cache.Set(cacheKey, departamentos, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Departamentos obtenidos para tenant: {Count}", departamentos.Count);
+                    _logger.LogInformation("Departamentos obtenidos para tenant: {Count}", departamentos.Count);
                     return departamentos;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo departamentos para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo departamentos para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción obteniendo departamentos para tenant");
+                _logger.LogError(ex, "Excepción obteniendo departamentos para tenant");
             }
 
             return new List<DepartamentoItem>();
@@ -157,19 +103,19 @@ namespace SegurosApp.API.Services
                     var combustibles = velneoResponse?.combustibles ?? new List<CombustibleItem>();
                     _cache.Set(cacheKey, combustibles, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Combustibles obtenidos para tenant: {Count}", combustibles.Count);
+                    _logger.LogInformation("Combustibles obtenidos para tenant: {Count}", combustibles.Count);
                     return combustibles;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo combustibles para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo combustibles para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo combustibles para tenant");
+                _logger.LogError(ex, "Error obteniendo combustibles para tenant");
             }
 
             return new List<CombustibleItem>();
@@ -198,19 +144,19 @@ namespace SegurosApp.API.Services
                     var corredores = velneoResponse?.corredores ?? new List<CorredorItem>();
                     _cache.Set(cacheKey, corredores, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Corredores obtenidos para tenant: {Count}", corredores.Count);
+                    _logger.LogInformation("Corredores obtenidos para tenant: {Count}", corredores.Count);
                     return corredores;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo corredores para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo corredores para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo corredores para tenant");
+                _logger.LogError(ex, "Error obteniendo corredores para tenant");
             }
 
             return new List<CorredorItem>();
@@ -239,19 +185,19 @@ namespace SegurosApp.API.Services
                     var categorias = velneoResponse?.categorias ?? new List<CategoriaItem>();
                     _cache.Set(cacheKey, categorias, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Categorías obtenidas para tenant: {Count}", categorias.Count);
+                    _logger.LogInformation("Categorías obtenidas para tenant: {Count}", categorias.Count);
                     return categorias;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo categorías para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo categorías para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo categorías para tenant");
+                _logger.LogError(ex, "Error obteniendo categorías para tenant");
             }
 
             return new List<CategoriaItem>();
@@ -280,19 +226,19 @@ namespace SegurosApp.API.Services
                     var destinos = velneoResponse?.destinos ?? new List<DestinoItem>();
                     _cache.Set(cacheKey, destinos, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Destinos obtenidos para tenant: {Count}", destinos.Count);
+                    _logger.LogInformation("Destinos obtenidos para tenant: {Count}", destinos.Count);
                     return destinos;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo destinos para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo destinos para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo destinos para tenant");
+                _logger.LogError(ex, "Error obteniendo destinos para tenant");
             }
 
             return new List<DestinoItem>();
@@ -321,19 +267,19 @@ namespace SegurosApp.API.Services
                     var calidades = velneoResponse?.calidades ?? new List<CalidadItem>();
                     _cache.Set(cacheKey, calidades, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Calidades obtenidas para tenant: {Count}", calidades.Count);
+                    _logger.LogInformation("Calidades obtenidas para tenant: {Count}", calidades.Count);
                     return calidades;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo calidades para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo calidades para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo calidades para tenant");
+                _logger.LogError(ex, "Error obteniendo calidades para tenant");
             }
 
             return new List<CalidadItem>();
@@ -362,19 +308,19 @@ namespace SegurosApp.API.Services
                     var tarifas = velneoResponse?.tarifas ?? new List<TarifaItem>();
                     _cache.Set(cacheKey, tarifas, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Tarifas obtenidas para tenant: {Count}", tarifas.Count);
+                    _logger.LogInformation("Tarifas obtenidas para tenant: {Count}", tarifas.Count);
                     return tarifas;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo tarifas para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo tarifas para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo tarifas para tenant");
+                _logger.LogError(ex, "Error obteniendo tarifas para tenant");
             }
 
             return new List<TarifaItem>();
@@ -403,19 +349,19 @@ namespace SegurosApp.API.Services
                     var monedas = velneoResponse?.monedas ?? new List<MonedaItem>();
                     _cache.Set(cacheKey, monedas, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Monedas obtenidas para tenant: {Count}", monedas.Count);
+                    _logger.LogInformation("Monedas obtenidas para tenant: {Count}", monedas.Count);
                     return monedas;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo monedas para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo monedas para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo monedas para tenant");
+                _logger.LogError(ex, "Error obteniendo monedas para tenant");
             }
 
             return new List<MonedaItem>();
@@ -425,9 +371,8 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔄 Obteniendo master data completo para tenant");
+                _logger.LogInformation("Obteniendo master data completo para tenant");
 
-                // Ejecutar todas las consultas en paralelo con tipos específicos
                 var departamentosTask = GetDepartamentosAsync();
                 var combustiblesTask = GetCombustiblesAsync();
                 var corredoresTask = GetCorredoresAsync();
@@ -439,7 +384,6 @@ namespace SegurosApp.API.Services
                 var companiasTask = GetCompaniasAsync();
                 var seccionesTask = GetSeccionesAsync();
 
-                // Esperar a que todas terminen
                 await Task.WhenAll(
                     departamentosTask,
                     combustiblesTask,
@@ -453,7 +397,6 @@ namespace SegurosApp.API.Services
                     seccionesTask
                 );
 
-                // Obtener los resultados
                 var response = new CompleteMasterDataResponse
                 {
                     Departamentos = await departamentosTask,
@@ -548,44 +491,28 @@ namespace SegurosApp.API.Services
                     var secciones = velneoResponse?.secciones ?? new List<SeccionItem>();
                     _cache.Set(cacheKey, secciones, TimeSpan.FromHours(2));
 
-                    _logger.LogInformation("✅ Secciones obtenidas para tenant (CompañíaId: {CompaniaId}): {Count}",
+                    _logger.LogInformation("Secciones obtenidas para tenant (CompañíaId: {CompaniaId}): {Count}",
                         companiaId, secciones.Count);
                     return secciones;
                 }
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo secciones para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo secciones para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo secciones para tenant");
+                _logger.LogError(ex, "Error obteniendo secciones para tenant");
             }
 
             return new List<SeccionItem>();
         }
 
-        public async Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue)
-        {
-            // TODO: Implementar lógica de sugerencia basada en datos del tenant
-            // Por ahora retorna sugerencia básica
-            return new FieldMappingSuggestion
-            {
-                FieldName = fieldName,
-                ScannedValue = scannedValue,
-                SuggestedValue = scannedValue,
-                Confidence = (double)0.5m,
-            };
-        }
+        #endregion
 
-        public async Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue)
-        {
-            // TODO: Implementar guardado de mappings personalizados por tenant
-            _logger.LogInformation("💾 Guardando mapping para tenant UserId {UserId}: {FieldName} = {VelneoValue}",
-                userId, fieldName, velneoValue);
-        }
+        #region Polizas
 
         public async Task<VelneoPaginatedResponse<ContratoItem>> GetPolizasPaginatedAsync(
             int page = 1,
@@ -596,7 +523,7 @@ namespace SegurosApp.API.Services
 
             if (_cache.TryGetValue(cacheKey, out VelneoPaginatedResponse<ContratoItem>? cached) && cached != null)
             {
-                _logger.LogDebug("💾 Pólizas paginadas desde cache para tenant - Página: {Page}", page);
+                _logger.LogDebug("Pólizas paginadas desde cache para tenant - Página: {Page}", page);
                 return cached;
             }
 
@@ -612,7 +539,6 @@ namespace SegurosApp.API.Services
                     $"page[size]={pageSize}"
                 };
 
-                // Aplicar filtros si existen
                 if (filters != null)
                 {
                     if (!string.IsNullOrEmpty(filters.NumeroPoliza))
@@ -641,9 +567,7 @@ namespace SegurosApp.API.Services
                 }
 
                 var url = $"v1/contratos?{string.Join("&", queryParams)}";
-
-                _logger.LogInformation("🔍 Obteniendo pólizas paginadas para tenant - Página: {Page}, Tamaño: {PageSize}", page, pageSize);
-
+                _logger.LogInformation("Obteniendo pólizas paginadas para tenant - Página: {Page}, Tamaño: {PageSize}", page, pageSize);
                 var response = await client.GetAsync(url);
 
                 if (response.IsSuccessStatusCode)
@@ -670,7 +594,7 @@ namespace SegurosApp.API.Services
 
                     _cache.Set(cacheKey, result, TimeSpan.FromMinutes(1));
 
-                    _logger.LogInformation("✅ Pólizas paginadas obtenidas para tenant: {Count}/{TotalCount}",
+                    _logger.LogInformation("Pólizas paginadas obtenidas para tenant: {Count}/{TotalCount}",
                         result.Count, result.TotalCount);
 
                     return result;
@@ -678,13 +602,13 @@ namespace SegurosApp.API.Services
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo pólizas paginadas para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo pólizas paginadas para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción obteniendo pólizas paginadas para tenant");
+                _logger.LogError(ex, "Excepción obteniendo pólizas paginadas para tenant");
             }
 
             return new VelneoPaginatedResponse<ContratoItem>();
@@ -714,7 +638,7 @@ namespace SegurosApp.API.Services
 
                 var url = $"v1/contratos?{string.Join("&", queryParams)}";
 
-                _logger.LogInformation("🔍 Búsqueda rápida de pólizas para tenant: '{NumeroPoliza}' (limit: {Limit})", numeroPoliza, limit);
+                _logger.LogInformation("Búsqueda rápida de pólizas para tenant: '{NumeroPoliza}' (limit: {Limit})", numeroPoliza, limit);
 
                 var response = await client.GetAsync(url);
 
@@ -735,7 +659,7 @@ namespace SegurosApp.API.Services
 
                     _cache.Set(cacheKey, polizas, TimeSpan.FromSeconds(30));
 
-                    _logger.LogInformation("✅ Búsqueda rápida de pólizas completada para tenant: {Count} resultados para '{NumeroPoliza}'",
+                    _logger.LogInformation("Búsqueda rápida de pólizas completada para tenant: {Count} resultados para '{NumeroPoliza}'",
                         polizas.Count, numeroPoliza);
 
                     return polizas;
@@ -743,13 +667,13 @@ namespace SegurosApp.API.Services
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error en búsqueda rápida de pólizas para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error en búsqueda rápida de pólizas para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción en búsqueda rápida de pólizas para tenant con número '{NumeroPoliza}'", numeroPoliza);
+                _logger.LogError(ex, "Excepción en búsqueda rápida de pólizas para tenant con número '{NumeroPoliza}'", numeroPoliza);
             }
 
             return new List<ContratoItem>();
@@ -761,7 +685,7 @@ namespace SegurosApp.API.Services
 
             if (_cache.TryGetValue(cacheKey, out ContratoItem? cached) && cached != null)
             {
-                _logger.LogInformation("💾 Póliza {PolizaId} obtenida desde cache para tenant", polizaId);
+                _logger.LogInformation("Póliza {PolizaId} obtenida desde cache para tenant", polizaId);
                 return cached;
             }
 
@@ -770,7 +694,7 @@ namespace SegurosApp.API.Services
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                _logger.LogInformation("📋 Obteniendo detalle póliza para tenant: {PolizaId}", polizaId);
+                _logger.LogInformation("Obteniendo detalle póliza para tenant: {PolizaId}", polizaId);
 
                 var response = await client.GetAsync($"v1/contratos/{polizaId}?api_key={apiKey}");
 
@@ -795,7 +719,7 @@ namespace SegurosApp.API.Services
                         {
                             var poliza = velneoResponse.contratos[0]; 
                             _cache.Set(cacheKey, poliza, TimeSpan.FromMinutes(15));
-                            _logger.LogInformation("✅ Póliza {PolizaId} obtenida para tenant: {NumeroPoliza}",
+                            _logger.LogInformation("Póliza {PolizaId} obtenida para tenant: {NumeroPoliza}",
                                 polizaId, poliza.conpol);
                             return poliza;
                         }
@@ -804,13 +728,13 @@ namespace SegurosApp.API.Services
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error obteniendo póliza {PolizaId} para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error obteniendo póliza {PolizaId} para tenant: {StatusCode} - {Error}",
                         polizaId, response.StatusCode, error);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción obteniendo póliza {PolizaId} para tenant", polizaId);
+                _logger.LogError(ex, "Excepción obteniendo póliza {PolizaId} para tenant", polizaId);
             }
 
             return null;
@@ -820,13 +744,11 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                // DEBUG: Verificar configuración
                 var userId = _tenantService.GetCurrentTenantUserId();
-                _logger.LogWarning("🔍 DEBUG CreatePoliza - UserId: {UserId}", userId);
 
                 if (userId == null)
                 {
-                    _logger.LogError("❌ UserId es NULL - usuario no autenticado");
+                    _logger.LogError("UserId es NULL - usuario no autenticado");
                     return new CreatePolizaResponse
                     {
                         Success = false,
@@ -835,38 +757,23 @@ namespace SegurosApp.API.Services
                 }
 
                 var (baseUrl, apiKey) = await GetTenantConfigAsync();
-                _logger.LogWarning("🔍 DEBUG CreatePoliza - BaseUrl: {BaseUrl}", baseUrl);
-                _logger.LogWarning("🔍 DEBUG CreatePoliza - ApiKey: {ApiKey}", apiKey?.Substring(0, 8) + "...");
-
-                // Verificar el JSON que se va a enviar
                 var json = JsonSerializer.Serialize(request, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                     WriteIndented = true
                 });
-                _logger.LogWarning("🔍 DEBUG CreatePoliza - Request JSON: {Json}", json);
 
                 using var client = await CreateTenantHttpClientAsync();
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-
                 var fullUrl = $"v1/contratos?api_key={apiKey}";
-                _logger.LogWarning("🔍 DEBUG CreatePoliza - Full URL: {BaseUrl}/{FullUrl}", baseUrl, fullUrl);
-
                 var response = await client.PostAsync(fullUrl, content);
-
-                _logger.LogWarning("🔍 DEBUG CreatePoliza - HTTP Status: {StatusCode}", response.StatusCode);
-
                 if (response.IsSuccessStatusCode)
                 {
                     var responseJson = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("🔍 DEBUG CreatePoliza - Success Response: {Response}", responseJson);
-                    _logger.LogWarning("🔍 DEBUG CreatePoliza - Response Length: {Length}", responseJson?.Length ?? 0);
-                    _logger.LogWarning("🔍 DEBUG CreatePoliza - Response is null or empty: {IsEmpty}", string.IsNullOrWhiteSpace(responseJson));
 
-                    // Si la respuesta está vacía, no intentar deserializar
                     if (string.IsNullOrWhiteSpace(responseJson))
                     {
-                        _logger.LogError("❌ Velneo devolvió respuesta vacía con HTTP 200");
+                        _logger.LogError("Velneo devolvió respuesta vacía con HTTP 200");
                         return new CreatePolizaResponse
                         {
                             Success = false,
@@ -874,14 +781,13 @@ namespace SegurosApp.API.Services
                         };
                     }
 
-                    // Deserializar como respuesta de contratos de Velneo
                     var velneoResponse = JsonSerializer.Deserialize<VelneoContratoResponse>(responseJson,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                     if (velneoResponse?.contratos?.Count > 0)
                     {
                         var polizaCreada = velneoResponse.contratos[0];
-                        _logger.LogInformation("✅ Póliza creada exitosamente para tenant: {PolizaId}", polizaCreada.id);
+                        _logger.LogInformation("Póliza creada exitosamente para tenant: {PolizaId}", polizaCreada.id);
 
                         return new CreatePolizaResponse
                         {
@@ -894,7 +800,7 @@ namespace SegurosApp.API.Services
                     }
                     else
                     {
-                        _logger.LogError("❌ Velneo no devolvió contratos en la respuesta");
+                        _logger.LogError("Velneo no devolvió contratos en la respuesta");
                         return new CreatePolizaResponse
                         {
                             Success = false,
@@ -905,7 +811,7 @@ namespace SegurosApp.API.Services
                 else
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error creando póliza para tenant: {StatusCode} - {Error}",
+                    _logger.LogError("Error creando póliza para tenant: {StatusCode} - {Error}",
                         response.StatusCode, error);
 
                     return new CreatePolizaResponse
@@ -917,7 +823,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción creando póliza para tenant");
+                _logger.LogError(ex, "Excepción creando póliza para tenant");
                 return new CreatePolizaResponse
                 {
                     Success = false,
@@ -926,23 +832,18 @@ namespace SegurosApp.API.Services
             }
         }
 
-        /// <summary>
-        /// Actualiza los estados de una póliza existente
-        /// </summary>
         public async Task<UpdatePolizaResponse> UpdatePolizaEstadosAsync(int polizaId)
         {
             try
             {
-                _logger.LogInformation("🔄 Marcando póliza {PolizaId} como ANT/Terminado", polizaId);
+                _logger.LogInformation("Marcando póliza {PolizaId} como ANT/Terminado", polizaId);
 
                 var (_, apiKey) = await GetTenantConfigAsync();
                 using var client = await CreateTenantHttpClientAsync();
-
-                // Preparar el request con los campos correctos
                 var updateRequest = new
                 {
-                    convig = "2",     // Estado ANT (Antecedente)
-                    congeses = "4"    // Trámite Terminado
+                    convig = "2",    
+                    congeses = "4"    
                 };
 
                 var json = JsonSerializer.Serialize(updateRequest, new JsonSerializerOptions
@@ -950,23 +851,19 @@ namespace SegurosApp.API.Services
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 });
 
-                _logger.LogInformation("📝 JSON de actualización: {Json}", json);
+                _logger.LogInformation("JSON de actualización: {Json}", json);
 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                // ✅ CAMBIO: Usar POST en lugar de PUT
                 var fullUrl = $"v1/contratos/{polizaId}?api_key={apiKey}";
-
-                // ✅ CAMBIO: PostAsync en lugar de PutAsync
                 var response = await client.PostAsync(fullUrl, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
-                _logger.LogInformation("📡 HTTP Status: {StatusCode}, Response: {Response}",
+                _logger.LogInformation("HTTP Status: {StatusCode}, Response: {Response}",
                     response.StatusCode, responseContent);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("✅ Póliza {PolizaId} marcada como ANT/Terminado exitosamente", polizaId);
+                    _logger.LogInformation("Póliza {PolizaId} marcada como ANT/Terminado exitosamente", polizaId);
 
                     return new UpdatePolizaResponse
                     {
@@ -979,7 +876,7 @@ namespace SegurosApp.API.Services
                 }
                 else
                 {
-                    _logger.LogError("❌ Error actualizando póliza {PolizaId}: {StatusCode} - {Error}",
+                    _logger.LogError("Error actualizando póliza {PolizaId}: {StatusCode} - {Error}",
                         polizaId, response.StatusCode, responseContent);
 
                     return new UpdatePolizaResponse
@@ -992,7 +889,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción actualizando póliza {PolizaId}", polizaId);
+                _logger.LogError(ex, "Excepción actualizando póliza {PolizaId}", polizaId);
                 return new UpdatePolizaResponse
                 {
                     Success = false,
@@ -1002,21 +899,17 @@ namespace SegurosApp.API.Services
             }
         }
 
-        /// <summary>
-        /// Realiza un cambio de póliza completo
-        /// </summary>
         public async Task<ModifyPolizaResponse> ModifyPolizaAsync(VelneoPolizaRequest request, int polizaAnteriorId, string tipoCambio, string? observaciones = null)
         {
             try
             {
-                _logger.LogInformation("🔄 Iniciando cambio de póliza - Anterior: {PolizaAnteriorId}, Tipo: {TipoCambio}",
+                _logger.LogInformation("Iniciando cambio de póliza - Anterior: {PolizaAnteriorId}, Tipo: {TipoCambio}",
                     polizaAnteriorId, tipoCambio);
 
-                // 1. Verificar que la póliza anterior existe
                 var polizaAnterior = await GetPolizaDetalleAsync(polizaAnteriorId);
                 if (polizaAnterior == null)
                 {
-                    _logger.LogError("❌ Póliza anterior {PolizaAnteriorId} no encontrada", polizaAnteriorId);
+                    _logger.LogError("Póliza anterior {PolizaAnteriorId} no encontrada", polizaAnteriorId);
                     return new ModifyPolizaResponse
                     {
                         Success = false,
@@ -1026,14 +919,12 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
-
-                // 2. Actualizar estados de la póliza anterior
+                _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
                 var updateResult = await UpdatePolizaEstadosAsync(polizaAnteriorId);
 
                 if (!updateResult.Success)
                 {
-                    _logger.LogError("❌ Error actualizando póliza anterior {PolizaAnteriorId}: {Message}",
+                    _logger.LogError("Error actualizando póliza anterior {PolizaAnteriorId}: {Message}",
                         polizaAnteriorId, updateResult.Message);
 
                     return new ModifyPolizaResponse
@@ -1047,7 +938,7 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                _logger.LogInformation("✅ Póliza anterior actualizada correctamente");
+                _logger.LogInformation("Póliza anterior actualizada correctamente");
 
                 request.conpadre = polizaAnteriorId;
                 request.contra = "3";
@@ -1060,13 +951,13 @@ namespace SegurosApp.API.Services
                 }
                 request.observaciones = observacionesCompletas;
 
-                _logger.LogInformation("📝 Creando nueva póliza con conpadre: {ConPadre}", request.conpadre);
+                _logger.LogInformation("Creando nueva póliza con conpadre: {ConPadre}", request.conpadre);
 
                 var createResult = await CreatePolizaAsync(request);
 
                 if (createResult.Success)
                 {
-                    _logger.LogInformation("✅ Cambio de póliza completado exitosamente - Nueva: {NuevaPolizaId}, Anterior: {AnteriorPolizaId}",
+                    _logger.LogInformation("Cambio de póliza completado exitosamente - Nueva: {NuevaPolizaId}, Anterior: {AnteriorPolizaId}",
                         createResult.VelneoPolizaId, polizaAnteriorId);
 
                     return new ModifyPolizaResponse
@@ -1086,10 +977,7 @@ namespace SegurosApp.API.Services
                 }
                 else
                 {
-                    _logger.LogError("❌ Error creando nueva póliza: {Message}", createResult.Message);
-
-                    // Si falló la creación, podrías considerar revertir la actualización de la póliza anterior
-                    // aunque esto dependería de tu lógica de negocio
+                    _logger.LogError("Error creando nueva póliza: {Message}", createResult.Message);
 
                     return new ModifyPolizaResponse
                     {
@@ -1105,7 +993,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción durante cambio de póliza {PolizaAnteriorId}", polizaAnteriorId);
+                _logger.LogError(ex, "Excepción durante cambio de póliza {PolizaAnteriorId}", polizaAnteriorId);
                 return new ModifyPolizaResponse
                 {
                     Success = false,
@@ -1121,13 +1009,12 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔄 Iniciando renovación de póliza - Anterior: {PolizaAnteriorId}", polizaAnteriorId);
+                _logger.LogInformation("Iniciando renovación de póliza - Anterior: {PolizaAnteriorId}", polizaAnteriorId);
 
-                // 1. Verificar que la póliza anterior existe
                 var polizaAnterior = await GetPolizaDetalleAsync(polizaAnteriorId);
                 if (polizaAnterior == null)
                 {
-                    _logger.LogError("❌ Póliza anterior {PolizaAnteriorId} no encontrada", polizaAnteriorId);
+                    _logger.LogError("Póliza anterior {PolizaAnteriorId} no encontrada", polizaAnteriorId);
                     return new RenewPolizaResponse
                     {
                         Success = false,
@@ -1136,9 +1023,8 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
+                _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
 
-                // 2. Validar vencimiento si está habilitado
                 DateTime? fechaVencimiento = null;
                 if (validarVencimiento)
                 {
@@ -1147,11 +1033,10 @@ namespace SegurosApp.API.Services
                     {
                         var diasParaVencimiento = (fechaVencimiento.Value - DateTime.Now).Days;
 
-                        _logger.LogInformation("📅 Póliza vence el {FechaVencimiento}, días restantes: {Dias}",
+                        _logger.LogInformation("Póliza vence el {FechaVencimiento}, días restantes: {Dias}",
                             fechaVencimiento.Value.ToString("dd/MM/yyyy"), diasParaVencimiento);
 
-                        // Validar que esté dentro del período permitido para renovación
-                        if (diasParaVencimiento > 60) // Más de 2 meses antes
+                        if (diasParaVencimiento > 60)
                         {
                             return new RenewPolizaResponse
                             {
@@ -1163,7 +1048,7 @@ namespace SegurosApp.API.Services
                             };
                         }
 
-                        if (diasParaVencimiento < -30) // Más de 30 días vencida
+                        if (diasParaVencimiento < -30) 
                         {
                             return new RenewPolizaResponse
                             {
@@ -1177,12 +1062,11 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                // 3. Actualizar estados de la póliza anterior (mismo método que cambios)
                 var updateResult = await UpdatePolizaEstadosAsync(polizaAnteriorId);
 
                 if (!updateResult.Success)
                 {
-                    _logger.LogError("❌ Error actualizando póliza anterior {PolizaAnteriorId}: {Message}",
+                    _logger.LogError("Error actualizando póliza anterior {PolizaAnteriorId}: {Message}",
                         polizaAnteriorId, updateResult.Message);
 
                     return new RenewPolizaResponse
@@ -1197,26 +1081,21 @@ namespace SegurosApp.API.Services
                     };
                 }
 
-                _logger.LogInformation("✅ Póliza anterior actualizada correctamente");
+                _logger.LogInformation("Póliza anterior actualizada correctamente");
 
-                // 4. Preparar la nueva póliza con configuración específica para renovación
                 request.conpadre = polizaAnteriorId;
                 request.contra = "2";  
 
-                // 5. Ajustar fechas para renovación
                 if (fechaVencimiento.HasValue)
                 {
-                    // La nueva póliza debe comenzar cuando vence la anterior
                     request.confchdes = fechaVencimiento.Value.AddDays(1).ToString("yyyy-MM-dd");
 
-                    // Si no hay fecha de fin especificada, usar un año más
                     if (string.IsNullOrEmpty(request.confchhas))
                     {
                         request.confchhas = fechaVencimiento.Value.AddYears(1).ToString("yyyy-MM-dd");
                     }
                 }
 
-                // Agregar información de la renovación a las observaciones
                 var observacionesCompletas = $"Renovación de póliza {polizaAnteriorId}";
                 if (fechaVencimiento.HasValue)
                 {
@@ -1228,16 +1107,15 @@ namespace SegurosApp.API.Services
                 }
                 request.observaciones = observacionesCompletas;
 
-                _logger.LogInformation("📝 Creando nueva póliza con conpadre: {ConPadre} y trámite: Renovación (2)", request.conpadre);
-                _logger.LogInformation("📅 Fechas renovación - Desde: {FechaDesde}, Hasta: {FechaHasta}",
+                _logger.LogInformation("Creando nueva póliza con conpadre: {ConPadre} y trámite: Renovación (2)", request.conpadre);
+                _logger.LogInformation("Fechas renovación - Desde: {FechaDesde}, Hasta: {FechaHasta}",
                     request.confchdes, request.confchhas);
 
-                // 6. Crear la nueva póliza
                 var createResult = await CreatePolizaAsync(request);
 
                 if (createResult.Success)
                 {
-                    _logger.LogInformation("✅ Renovación de póliza completada exitosamente - Nueva: {NuevaPolizaId}, Anterior: {AnteriorPolizaId}",
+                    _logger.LogInformation("Renovación de póliza completada exitosamente - Nueva: {NuevaPolizaId}, Anterior: {AnteriorPolizaId}",
                         createResult.VelneoPolizaId, polizaAnteriorId);
 
                     return new RenewPolizaResponse
@@ -1258,7 +1136,7 @@ namespace SegurosApp.API.Services
                 }
                 else
                 {
-                    _logger.LogError("❌ Error creando nueva póliza en renovación: {Message}", createResult.Message);
+                    _logger.LogError("Error creando nueva póliza en renovación: {Message}", createResult.Message);
 
                     return new RenewPolizaResponse
                     {
@@ -1275,7 +1153,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Excepción durante renovación de póliza {PolizaAnteriorId}", polizaAnteriorId);
+                _logger.LogError(ex, "Excepción durante renovación de póliza {PolizaAnteriorId}", polizaAnteriorId);
                 return new RenewPolizaResponse
                 {
                     Success = false,
@@ -1286,22 +1164,11 @@ namespace SegurosApp.API.Services
             }
         }
 
-        private DateTime? ParseVelneoDate(string? velneoDate)
-        {
-            if (string.IsNullOrEmpty(velneoDate)) return null;
+        #endregion
 
-            if (DateTime.TryParse(velneoDate, out DateTime result))
-            {
-                return result;
-            }
+        #region Cliente
 
-            return null;
-        }
-
-        public async Task<VelneoPaginatedResponse<ClienteItem>> GetClientesPaginatedAsync(
-    int page = 1,
-    int pageSize = 20,
-    ClienteSearchFilters? filters = null)
+        public async Task<VelneoPaginatedResponse<ClienteItem>> GetClientesPaginatedAsync(int page = 1, int pageSize = 20, ClienteSearchFilters? filters = null)
         {
             var cacheKey = GetTenantCacheKey($"clientes_page_{page}_{pageSize}_{filters?.GetCacheKey() ?? "all"}");
 
@@ -1317,13 +1184,12 @@ namespace SegurosApp.API.Services
                 var (_, apiKey) = await GetTenantConfigAsync();
 
                 var queryParams = new List<string>
-        {
-            $"api_key={apiKey}",
-            $"page[number]={page}",
-            $"page[size]={pageSize}"
-        };
+                {
+                    $"api_key={apiKey}",
+                    $"page[number]={page}",
+                    $"page[size]={pageSize}"
+                };
 
-                // Aplicar filtros si existen
                 if (filters != null)
                 {
                     if (!string.IsNullOrEmpty(filters.Nombre))
@@ -1376,7 +1242,6 @@ namespace SegurosApp.API.Services
                         PageSize = pageSize
                     };
 
-                    // Cache más corto para páginas paginadas (2 minutos)
                     _cache.Set(cacheKey, result, TimeSpan.FromMinutes(2));
 
                     _logger.LogInformation("✅ Clientes paginados obtenidos para tenant: {Count}/{TotalCount}",
@@ -1399,79 +1264,6 @@ namespace SegurosApp.API.Services
             return new VelneoPaginatedResponse<ClienteItem>();
         }
 
-        /// <summary>
-        /// Búsqueda rápida de clientes por nombre (para autocomplete/typeahead)
-        /// </summary>
-        public async Task<List<ClienteItem>> SearchClientesQuickAsync(string query, int limit = 10)
-        {
-            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
-                return new List<ClienteItem>();
-
-            var cacheKey = GetTenantCacheKey($"clientes_quick_search_{query.ToLower()}_{limit}");
-
-            if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
-                return cached;
-
-            try
-            {
-                using var client = await CreateTenantHttpClientAsync();
-                var (_, apiKey) = await GetTenantConfigAsync();
-
-                var queryParams = new List<string>
-        {
-            $"api_key={apiKey}",
-            $"filter[nombre]={Uri.EscapeDataString(query)}",
-            $"page[size]={limit}",
-            "filter[activo]=true"
-        };
-
-                var url = $"v1/clientes?{string.Join("&", queryParams)}";
-
-                _logger.LogInformation("🔍 Búsqueda rápida de clientes para tenant: '{Query}' (limit: {Limit})", query, limit);
-
-                var response = await client.GetAsync(url);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json,
-                        new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true,
-                            Converters = {
-                        new NullableDateTimeConverter(),
-                        new DateTimeConverter()
-                            }
-                        });
-
-                    var clientes = velneoResponse?.clientes ?? new List<ClienteItem>();
-
-                    // Cache corto para búsquedas rápidas (1 minuto)
-                    _cache.Set(cacheKey, clientes, TimeSpan.FromMinutes(1));
-
-                    _logger.LogInformation("✅ Búsqueda rápida completada para tenant: {Count} resultados para '{Query}'",
-                        clientes.Count, query);
-
-                    return clientes;
-                }
-                else
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("❌ Error en búsqueda rápida para tenant: {StatusCode} - {Error}",
-                        response.StatusCode, error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Excepción en búsqueda rápida de clientes para tenant con query '{Query}'", query);
-            }
-
-            return new List<ClienteItem>();
-        }
-
-        /// <summary>
-        /// Obtiene detalle de un cliente específico (mantenido igual)
-        /// </summary>
         public async Task<ClienteItem?> GetClienteDetalleAsync(int clienteId)
         {
             var cacheKey = GetTenantCacheKey($"cliente_detalle_{clienteId}");
@@ -1510,7 +1302,6 @@ namespace SegurosApp.API.Services
 
                         if (cliente != null)
                         {
-                            // Cache más largo para detalles específicos (30 minutos)
                             _cache.Set(cacheKey, cliente, TimeSpan.FromMinutes(30));
                             _logger.LogInformation("✅ Cliente {ClienteId} obtenido para tenant: {Nombre}",
                                 clienteId, cliente.clinom);
@@ -1533,5 +1324,150 @@ namespace SegurosApp.API.Services
             return null;
         }
 
+        public async Task<List<ClienteItem>> SearchClientesQuickAsync(string query, int limit = 10)
+        {
+            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+                return new List<ClienteItem>();
+
+            var cacheKey = GetTenantCacheKey($"clientes_quick_search_{query.ToLower()}_{limit}");
+
+            if (_cache.TryGetValue(cacheKey, out List<ClienteItem>? cached) && cached != null)
+                return cached;
+
+            try
+            {
+                using var client = await CreateTenantHttpClientAsync();
+                var (_, apiKey) = await GetTenantConfigAsync();
+
+                var queryParams = new List<string>
+                {
+                    $"api_key={apiKey}",
+                    $"filter[nombre]={Uri.EscapeDataString(query)}",
+                    $"page[size]={limit}",
+                    "filter[activo]=true"
+                };
+
+                var url = $"v1/clientes?{string.Join("&", queryParams)}";
+
+                _logger.LogInformation("🔍 Búsqueda rápida de clientes para tenant: '{Query}' (limit: {Limit})", query, limit);
+
+                var response = await client.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var velneoResponse = JsonSerializer.Deserialize<VelneoClienteDetalleResponse>(json,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                            Converters = {
+                        new NullableDateTimeConverter(),
+                        new DateTimeConverter()
+                            }
+                        });
+
+                    var clientes = velneoResponse?.clientes ?? new List<ClienteItem>();
+
+                    _cache.Set(cacheKey, clientes, TimeSpan.FromMinutes(1));
+
+                    _logger.LogInformation("✅ Búsqueda rápida completada para tenant: {Count} resultados para '{Query}'",
+                        clientes.Count, query);
+
+                    return clientes;
+                }
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("❌ Error en búsqueda rápida para tenant: {StatusCode} - {Error}",
+                        response.StatusCode, error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Excepción en búsqueda rápida de clientes para tenant con query '{Query}'", query);
+            }
+
+            return new List<ClienteItem>();
+        }
+
+        #endregion
+
+        #region Metodos Auxiliares
+
+        private async Task<(string baseUrl, string apiKey)> GetTenantConfigAsync()
+        {
+            var userId = _tenantService.GetCurrentTenantUserId();
+            if (userId == null)
+            {
+                throw new UnauthorizedAccessException("Usuario no autenticado o UserId no encontrado");
+            }
+
+            var apiKey = await _tenantService.GetTenantApiKeyAsync(userId.Value);
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                throw new UnauthorizedAccessException($"API Key de Velneo no configurada para el usuario {userId}");
+            }
+
+            var baseUrl = await _tenantService.GetTenantBaseUrlAsync(userId.Value) ?? DefaultBaseUrl;
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                throw new InvalidOperationException("URL base de Velneo no configurada");
+            }
+
+            _logger.LogDebug("Usando configuración de tenant - UserId: {UserId}, BaseUrl: {BaseUrl}", userId, baseUrl);
+
+            return (baseUrl, apiKey);
+        }
+
+        private async Task<HttpClient> CreateTenantHttpClientAsync()
+        {
+            var (baseUrl, apiKey) = await GetTenantConfigAsync();
+            var client = _httpClientFactory.CreateClient("MultiTenantVelneo");
+            _logger.LogWarning("DEBUG: HttpClient timeout: {Timeout} segundos", client.Timeout.TotalSeconds);
+            client.BaseAddress = new Uri(baseUrl);
+            client.DefaultRequestHeaders.Clear();
+            client.DefaultRequestHeaders.Add("ApiKey", apiKey);
+
+            return client;
+        }
+
+        private string GetTenantCacheKey(string baseKey)
+        {
+            var userId = _tenantService.GetCurrentTenantUserId();
+            return $"{baseKey}_tenant_{userId}";
+        }
+
+        public async Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue)
+        {
+            // TODO: Implementar lógica de sugerencia basada en datos del tenant
+            // Por ahora retorna sugerencia básica
+            return new FieldMappingSuggestion
+            {
+                FieldName = fieldName,
+                ScannedValue = scannedValue,
+                SuggestedValue = scannedValue,
+                Confidence = (double)0.5m,
+            };
+        }
+
+        public async Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue)
+        {
+            _logger.LogInformation("Guardando mapping para tenant UserId {UserId}: {FieldName} = {VelneoValue}",
+                userId, fieldName, velneoValue);
+        }
+
+        private DateTime? ParseVelneoDate(string? velneoDate)
+        {
+            if (string.IsNullOrEmpty(velneoDate)) return null;
+
+            if (DateTime.TryParse(velneoDate, out DateTime result))
+            {
+                return result;
+            }
+
+            return null;
+        }
+
+        #endregion
     }
 }

@@ -31,18 +31,18 @@ namespace SegurosApp.API.Controllers
         {
             try
             {
-                _logger.LogInformation("📋 Usuario {UserId} solicitando master data completo", GetCurrentUserId());
+                _logger.LogInformation("Usuario {UserId} solicitando master data completo", GetCurrentUserId());
 
                 var masterData = await _masterDataService.GetAllMasterDataAsync();
 
-                _logger.LogInformation("✅ Master data enviado: {Departamentos} dept, {Combustibles} comb, {Corredores} corr",
+                _logger.LogInformation("Master data enviado: {Departamentos} dept, {Combustibles} comb, {Corredores} corr",
                     masterData.Departamentos.Count, masterData.Combustibles.Count, masterData.Corredores.Count);
 
                 return Ok(masterData);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo master data completo");
+                _logger.LogError(ex, "Error obteniendo master data completo");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -59,20 +59,20 @@ namespace SegurosApp.API.Controllers
                     return BadRequest(new { message = "FieldName y ScannedValue son requeridos" });
                 }
 
-                _logger.LogInformation("🧠 Sugiriendo mapeo para {FieldName}: '{ScannedValue}'",
+                _logger.LogInformation("Sugiriendo mapeo para {FieldName}: '{ScannedValue}'",
                     request.FieldName, request.ScannedValue);
 
                 var suggestion = await _masterDataService.SuggestMappingAsync(
                     request.FieldName, request.ScannedValue);
 
-                _logger.LogInformation("💡 Sugerencia: {SuggestedValue} con {Confidence:P1} confianza",
+                _logger.LogInformation("Sugerencia: {SuggestedValue} con {Confidence:P1} confianza",
                     suggestion.SuggestedValue, suggestion.Confidence);
 
                 return Ok(suggestion);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error sugiriendo mapeo");
+                _logger.LogError(ex, "Error sugiriendo mapeo");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -84,7 +84,7 @@ namespace SegurosApp.API.Controllers
             {
                 var userId = GetCurrentUserId();
 
-                _logger.LogInformation("💾 Usuario {UserId} guardando mapeo: {FieldName} '{ScannedValue}' -> '{VelneoValue}'",
+                _logger.LogInformation("Usuario {UserId} guardando mapeo: {FieldName} '{ScannedValue}' -> '{VelneoValue}'",
                     userId, request.FieldName, request.ScannedValue, request.VelneoValue);
 
                 await _masterDataService.SaveMappingAsync(
@@ -94,7 +94,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error guardando mapeo");
+                _logger.LogError(ex, "Error guardando mapeo");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -103,16 +103,16 @@ namespace SegurosApp.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
         public async Task<ActionResult> GetPolizas(
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 20,
-    [FromQuery] string? numeroPoliza = null,
-    [FromQuery] int? clienteId = null,
-    [FromQuery] int? companiaId = null,
-    [FromQuery] int? seccionId = null,
-    [FromQuery] string? estado = null,
-    [FromQuery] DateTime? fechaDesde = null,
-    [FromQuery] DateTime? fechaHasta = null,
-    [FromQuery] bool soloActivos = true)
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? numeroPoliza = null,
+            [FromQuery] int? clienteId = null,
+            [FromQuery] int? companiaId = null,
+            [FromQuery] int? seccionId = null,
+            [FromQuery] string? estado = null,
+            [FromQuery] DateTime? fechaDesde = null,
+            [FromQuery] DateTime? fechaHasta = null,
+            [FromQuery] bool soloActivos = true)
         {
             try
             {
@@ -206,9 +206,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Búsqueda rápida de pólizas por número para autocomplete
-        /// </summary>
         [HttpGet("polizas/search")]
         [ProducesResponseType(typeof(ApiResponse<List<ContratoItem>>), 200)]
         [ProducesResponseType(400)]
@@ -276,9 +273,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Obtiene detalle completo de una póliza específica
-        /// </summary>
         [HttpGet("polizas/{polizaId}")]
         [ProducesResponseType(typeof(ApiResponse<ContratoItem>), 200)]
         [ProducesResponseType(404)]
@@ -332,9 +326,6 @@ namespace SegurosApp.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Obtiene pólizas de un cliente específico
-        /// </summary>
         [HttpGet("clientes/{clienteId}/polizas")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
@@ -485,19 +476,18 @@ namespace SegurosApp.API.Controllers
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(400)]
         public async Task<ActionResult> GetClientes(
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 20,
-    [FromQuery] string? nombre = null,
-    [FromQuery] string? cliced = null,
-    [FromQuery] string? clicel = null,
-    [FromQuery] string? clitel = null,
-    [FromQuery] string? mail = null,
-    [FromQuery] string? cliruc = null,
-    [FromQuery] bool soloActivos = true)
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? nombre = null,
+            [FromQuery] string? cliced = null,
+            [FromQuery] string? clicel = null,
+            [FromQuery] string? clitel = null,
+            [FromQuery] string? mail = null,
+            [FromQuery] string? cliruc = null,
+            [FromQuery] bool soloActivos = true)
         {
             try
             {
-                // Validaciones
                 if (page < 1) page = 1;
                 if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
@@ -505,7 +495,6 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("Usuario {UserId} obteniendo clientes - Página: {Page}, Tamaño: {PageSize}",
                     userId, page, pageSize);
 
-                // Construir filtros si se proporcionan
                 ClienteSearchFilters? filters = null;
                 if (!string.IsNullOrEmpty(nombre) || !string.IsNullOrEmpty(cliced) ||
                     !string.IsNullOrEmpty(clicel) || !string.IsNullOrEmpty(clitel) ||
@@ -713,7 +702,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo departamentos");
+                _logger.LogError(ex, "Error obteniendo departamentos");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -728,7 +717,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo combustibles");
+                _logger.LogError(ex, "Error obteniendo combustibles");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -743,7 +732,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo corredores");
+                _logger.LogError(ex, "Error obteniendo corredores");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -758,7 +747,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo categorías");
+                _logger.LogError(ex, "Error obteniendo categorías");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -773,7 +762,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo destinos");
+                _logger.LogError(ex, "Error obteniendo destinos");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -788,7 +777,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo calidades");
+                _logger.LogError(ex, "Error obteniendo calidades");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -803,7 +792,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo tarifas");
+                _logger.LogError(ex, "Error obteniendo tarifas");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -815,11 +804,11 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("🏢 Usuario {UserId} obteniendo compañías", userId);
+                _logger.LogInformation("Usuario {UserId} obteniendo compañías", userId);
 
                 var companias = await _masterDataService.GetCompaniasAsync();
 
-                _logger.LogInformation("✅ Compañías obtenidas: {Count}", companias.Count);
+                _logger.LogInformation("Compañías obtenidas: {Count}", companias.Count);
 
                 return Ok(ApiResponse<List<CompaniaItem>>.SuccessResult(
                     companias,
@@ -828,7 +817,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo compañías");
+                _logger.LogError(ex, "Error obteniendo compañías");
                 return StatusCode(500, ApiResponse<List<CompaniaItem>>.ErrorResult(
                     "Error interno del servidor"));
             }
@@ -842,12 +831,12 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📋 Usuario {UserId} obteniendo secciones (compañía: {CompaniaId})",
+                _logger.LogInformation("Usuario {UserId} obteniendo secciones (compañía: {CompaniaId})",
                     userId, companiaId?.ToString() ?? "todas");
 
                 var secciones = await _masterDataService.GetSeccionesAsync(companiaId);
 
-                _logger.LogInformation("✅ Secciones obtenidas: {Count}", secciones.Count);
+                _logger.LogInformation("Secciones obtenidas: {Count}", secciones.Count);
 
                 return Ok(ApiResponse<List<SeccionItem>>.SuccessResult(
                     secciones,
@@ -856,7 +845,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo secciones");
+                _logger.LogError(ex, "Error obteniendo secciones");
                 return StatusCode(500, ApiResponse<List<SeccionItem>>.ErrorResult(
                     "Error interno del servidor"));
             }
@@ -872,7 +861,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo monedas");
+                _logger.LogError(ex, "Error obteniendo monedas");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -894,7 +883,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Health check falló");
+                _logger.LogError(ex, "Health check falló");
                 return StatusCode(500, new
                 {
                     status = "unhealthy",

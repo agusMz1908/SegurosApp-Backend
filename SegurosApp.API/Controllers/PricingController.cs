@@ -27,7 +27,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📊 Usuario {UserId} consultando tiers de precios", userId);
+                _logger.LogInformation("Usuario {UserId} consultando tiers de precios", userId);
 
                 var tiers = await _pricingService.GetActivePricingTiersAsync();
 
@@ -35,7 +35,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo tiers de precios");
+                _logger.LogError(ex, "Error obteniendo tiers de precios");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -52,7 +52,7 @@ namespace SegurosApp.API.Controllers
                 }
 
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("💰 Usuario {UserId} calculando precio para {PolizasCount} pólizas", userId, polizasCount);
+                _logger.LogInformation("Usuario {UserId} calculando precio para {PolizasCount} pólizas", userId, polizasCount);
 
                 var tier = await _pricingService.GetApplicableTierAsync(polizasCount);
                 var totalCost = tier.PricePerPoliza * polizasCount;
@@ -70,7 +70,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error calculando precio para {PolizasCount} pólizas", polizasCount);
+                _logger.LogError(ex, "Error calculando precio para {PolizasCount} pólizas", polizasCount);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -83,7 +83,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("➕ Usuario {UserId} creando nuevo tier: {TierName}", userId, dto.TierName);
+                _logger.LogInformation("Usuario {UserId} creando nuevo tier: {TierName}", userId, dto.TierName);
 
                 var tier = await _pricingService.CreatePricingTierAsync(dto);
 
@@ -91,12 +91,12 @@ namespace SegurosApp.API.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning("⚠️ Error de validación creando tier: {Error}", ex.Message);
+                _logger.LogWarning("Error de validación creando tier: {Error}", ex.Message);
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error creando tier de precios");
+                _logger.LogError(ex, "Error creando tier de precios");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -110,7 +110,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("✏️ Usuario {UserId} actualizando tier {TierId}: {TierName}", userId, id, dto.TierName);
+                _logger.LogInformation("✏Usuario {UserId} actualizando tier {TierId}: {TierName}", userId, id, dto.TierName);
 
                 var tier = await _pricingService.UpdatePricingTierAsync(id, dto);
 
@@ -118,17 +118,17 @@ namespace SegurosApp.API.Controllers
             }
             catch (ArgumentException ex)
             {
-                _logger.LogWarning("⚠️ Tier {TierId} no encontrado", id);
+                _logger.LogWarning("Tier {TierId} no encontrado", id);
                 return NotFound(new { message = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning("⚠️ Error de validación actualizando tier: {Error}", ex.Message);
+                _logger.LogWarning("Error de validación actualizando tier: {Error}", ex.Message);
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error actualizando tier de precios {TierId}", id);
+                _logger.LogError(ex, "Error actualizando tier de precios {TierId}", id);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -141,7 +141,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("🗑️ Usuario {UserId} desactivando tier {TierId}", userId, id);
+                _logger.LogInformation("Usuario {UserId} desactivando tier {TierId}", userId, id);
 
                 var success = await _pricingService.DeactivatePricingTierAsync(id);
 
@@ -154,7 +154,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error desactivando tier de precios {TierId}", id);
+                _logger.LogError(ex, "Error desactivando tier de precios {TierId}", id);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }

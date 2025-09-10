@@ -29,7 +29,7 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔐 Intento de login para usuario: {Username}", username);
+                _logger.LogInformation("Intento de login para usuario: {Username}", username);
 
                 var user = await _context.Users
             .Include(u => u.TenantConfiguration) 
@@ -39,7 +39,7 @@ namespace SegurosApp.API.Services
 
                 if (user == null)
                 {
-                    _logger.LogWarning("⚠️ Usuario no encontrado: {Username}", username);
+                    _logger.LogWarning("Usuario no encontrado: {Username}", username);
                     return new LoginResponse
                     {
                         Success = false,
@@ -49,7 +49,7 @@ namespace SegurosApp.API.Services
 
                 if (!user.TenantId.HasValue || user.TenantConfiguration == null || !user.TenantConfiguration.IsActive)
                 {
-                    _logger.LogWarning("⚠️ Usuario {Username} sin tenant activo", username);
+                    _logger.LogWarning("Usuario {Username} sin tenant activo", username);
                     return new LoginResponse
                     {
                         Success = false,
@@ -71,7 +71,7 @@ namespace SegurosApp.API.Services
 
                 if (!passwordValid)
                 {
-                    _logger.LogWarning("⚠️ Contraseña incorrecta para usuario: {Username}", username);
+                    _logger.LogWarning("Contraseña incorrecta para usuario: {Username}", username);
                     return new LoginResponse
                     {
                         Success = false,
@@ -84,7 +84,7 @@ namespace SegurosApp.API.Services
                 user.LastLoginAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Login exitoso para usuario: {Username}", username);
+                _logger.LogInformation("Login exitoso para usuario: {Username}", username);
 
                 return new LoginResponse
                 {
@@ -102,7 +102,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error durante login para usuario: {Username}", username);
+                _logger.LogError(ex, "Error durante login para usuario: {Username}", username);
                 return new LoginResponse
                 {
                     Success = false,
@@ -115,13 +115,13 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("📝 Intento de registro para usuario: {Username}", request.Username);
+                _logger.LogInformation("Intento de registro para usuario: {Username}", request.Username);
                 var existingUser = await _context.Users
                     .FirstOrDefaultAsync(u => u.Username == request.Username || u.Email == request.Email);
 
                 if (existingUser != null)
                 {
-                    _logger.LogWarning("⚠️ Usuario ya existe: {Username}", request.Username);
+                    _logger.LogWarning("Usuario ya existe: {Username}", request.Username);
                     return ApiResponse<UserDto>.ErrorResult("El usuario o email ya existe");
                 }
 
@@ -137,7 +137,7 @@ namespace SegurosApp.API.Services
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Usuario registrado exitosamente: {Username}", request.Username);
+                _logger.LogInformation("Usuario registrado exitosamente: {Username}", request.Username);
 
                 return ApiResponse<UserDto>.SuccessResult(
                     new UserDto
@@ -151,7 +151,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error durante registro para usuario: {Username}", request.Username);
+                _logger.LogError(ex, "Error durante registro para usuario: {Username}", request.Username);
                 return ApiResponse<UserDto>.ErrorResult("Error interno del servidor");
             }
         }
@@ -174,12 +174,12 @@ namespace SegurosApp.API.Services
                 user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Contraseña cambiada para usuario: {UserId}", userId);
+                _logger.LogInformation("Contraseña cambiada para usuario: {UserId}", userId);
                 return ApiResponse.SuccessResult("Contraseña actualizada exitosamente");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error cambiando contraseña para usuario: {UserId}", userId);
+                _logger.LogError(ex, "Error cambiando contraseña para usuario: {UserId}", userId);
                 return ApiResponse.ErrorResult("Error interno del servidor");
             }
         }
@@ -203,7 +203,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo usuario: {UserId}", userId);
+                _logger.LogError(ex, "Error obteniendo usuario: {UserId}", userId);
                 return null;
             }
         }

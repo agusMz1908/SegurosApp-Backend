@@ -1,10 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SegurosApp.API.DTOs;
 using SegurosApp.API.DTOs.Velneo.Metrics;
 using SegurosApp.API.Interfaces;
-using SegurosApp.API.Services;
-using System.Security.Claims;
 
 namespace SegurosApp.API.Controllers
 {
@@ -157,7 +154,7 @@ namespace SegurosApp.API.Controllers
 
         private bool IsValidOperationType(string operationType)
         {
-            return operationType == "CREATE" || operationType == "MODIFY" || operationType == "RENEW";
+            return operationType == "POLIZA_NUEVA" || operationType == "CAMBIO" || operationType == "RENOVACION";
         }
     }
 }

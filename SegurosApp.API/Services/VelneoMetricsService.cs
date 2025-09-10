@@ -26,12 +26,12 @@ namespace SegurosApp.API.Services
                 _context.VelneoOperationMetrics.Add(metric);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("📊 Métrica registrada: {OperationType} - {Success} - Usuario: {UserId}",
+                _logger.LogInformation("Métrica registrada: {OperationType} - {Success} - Usuario: {UserId}",
                     metric.OperationType, metric.Success ? "SUCCESS" : "FAILED", metric.UserId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error registrando métrica de operación");
+                _logger.LogError(ex, "Error registrando métrica de operación");
             }
         }
 
@@ -137,7 +137,6 @@ namespace SegurosApp.API.Services
 
             var avgDuration = metrics.Where(m => m.DurationMs.HasValue).Average(m => m.DurationMs) ?? 0;
 
-            // Calcular operaciones por día
             var operationsPerDay = 0m;
             if (fromDate.HasValue && toDate.HasValue && total > 0)
             {
@@ -161,9 +160,9 @@ namespace SegurosApp.API.Services
         {
             return new VelneoOperationMetricsDto
             {
-                Create = CalculateStats(metrics.Where(m => m.OperationType == VelneoOperationType.CREATE).ToList()),
-                Modify = CalculateStats(metrics.Where(m => m.OperationType == VelneoOperationType.MODIFY).ToList()),
-                Renew = CalculateStats(metrics.Where(m => m.OperationType == VelneoOperationType.RENEW).ToList())
+                Create = CalculateStats(metrics.Where(m => m.OperationType == VelneoOperationType.POLIZA_NUEVA).ToList()),
+                Modify = CalculateStats(metrics.Where(m => m.OperationType == VelneoOperationType.CAMBIO).ToList()),
+                Renew = CalculateStats(metrics.Where(m => m.OperationType == VelneoOperationType.RENOVACION).ToList())
             };
         }
 

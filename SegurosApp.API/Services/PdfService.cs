@@ -13,8 +13,6 @@ namespace SegurosApp.API.Services
         public PdfService(ILogger<PdfService> logger)
         {
             _logger = logger;
-
-            // Configurar QuestPDF
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
@@ -22,7 +20,7 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔄 Generando PDF para factura {BillId}", billDetail.Id);
+                _logger.LogInformation("Generando PDF para factura {BillId}", billDetail.Id);
 
                 var pdfBytes = await Task.Run(() =>
                 {
@@ -52,21 +50,20 @@ namespace SegurosApp.API.Services
                     }).GeneratePdf();
                 });
 
-                _logger.LogInformation("✅ PDF generado exitosamente para factura {BillId}, tamaño: {Size} bytes",
+                _logger.LogInformation("PDF generado exitosamente para factura {BillId}, tamaño: {Size} bytes",
                     billDetail.Id, pdfBytes.Length);
 
                 return pdfBytes;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando PDF para factura {BillId}", billDetail.Id);
+                _logger.LogError(ex, "Error generando PDF para factura {BillId}", billDetail.Id);
                 throw;
             }
         }
 
         private void BuildInvoiceContent(ColumnDescriptor column, BillDetailDto billDetail)
         {
-            // Header de la factura
             column.Item().PaddingBottom(20).Row(row =>
             {
                 row.ConstantItem(150).Column(col =>
@@ -83,7 +80,6 @@ namespace SegurosApp.API.Services
                 });
             });
 
-            // Información de la empresa
             column.Item().PaddingBottom(15).Background(Colors.Grey.Lighten4).Padding(10).Column(col =>
             {
                 col.Item().Text("Información de la Empresa").SemiBold().FontSize(12).FontColor(Colors.Blue.Medium);
@@ -96,7 +92,6 @@ namespace SegurosApp.API.Services
                     col.Item().Text($"RUC: {billDetail.CompanyRUC}").FontSize(10);
             });
 
-            // Detalles de la factura
             column.Item().PaddingBottom(15).Row(row =>
             {
                 row.RelativeItem().Column(col =>
@@ -124,24 +119,21 @@ namespace SegurosApp.API.Services
                 }
             });
 
-            // Tabla de pólizas
             column.Item().PaddingBottom(15).Column(col =>
             {
                 col.Item().Text("Detalle de Pólizas Escaneadas").SemiBold().FontSize(12).FontColor(Colors.Blue.Medium);
 
                 col.Item().Table(table =>
                 {
-                    // Definir columnas
                     table.ColumnsDefinition(columns =>
                     {
-                        columns.ConstantColumn(80);   // Fecha
-                        columns.RelativeColumn(3);    // Archivo
-                        columns.RelativeColumn(2);    // Número Póliza
-                        columns.ConstantColumn(70);   // Precio
-                        columns.ConstantColumn(70);   // Total
+                        columns.ConstantColumn(80);   
+                        columns.RelativeColumn(3);    
+                        columns.RelativeColumn(2);    
+                        columns.ConstantColumn(70);   
+                        columns.ConstantColumn(70);   
                     });
 
-                    // Header de la tabla
                     table.Header(header =>
                     {
                         header.Cell().Background(Colors.Blue.Medium).Padding(5).Text("Fecha").FontColor(Colors.White).FontSize(9).SemiBold();
@@ -151,7 +143,6 @@ namespace SegurosApp.API.Services
                         header.Cell().Background(Colors.Blue.Medium).Padding(5).Text("Total").FontColor(Colors.White).FontSize(9).SemiBold().AlignRight();
                     });
 
-                    // Filas de datos
                     foreach (var item in billDetail.BillingItems)
                     {
                         table.Cell().Padding(5).Text(item.ScanDate.ToString("dd/MM/yyyy")).FontSize(9);
@@ -163,7 +154,6 @@ namespace SegurosApp.API.Services
                 });
             });
 
-            // Totales
             column.Item().PaddingTop(15).AlignRight().Width(250).Table(table =>
             {
                 table.ColumnsDefinition(columns =>

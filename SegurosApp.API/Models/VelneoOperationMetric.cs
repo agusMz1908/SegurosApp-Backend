@@ -26,8 +26,8 @@ namespace SegurosApp.API.Models
 
     public static class VelneoOperationType
     {
-        public const string CREATE = "CREATE";
-        public const string MODIFY = "MODIFY";
-        public const string RENEW = "RENEW";
+        public const string POLIZA_NUEVA = "POLIZA_NUEVA";
+        public const string CAMBIO = "CAMBIO";
+        public const string RENOVACION = "RENOVACION";
     }
 }

@@ -39,7 +39,7 @@ namespace SegurosApp.API.Controllers
                     return Unauthorized(ApiResponse<CompleteDashboardDto>.ErrorResult("Usuario no autenticado"));
                 }
 
-                _logger.LogInformation("📊 Usuario {UserId} solicitando dashboard - últimos {Days} días", userId, days);
+                _logger.LogInformation("Usuario {UserId} solicitando dashboard - últimos {Days} días", userId, days);
 
                 var fromDate = DateTime.UtcNow.AddDays(-days);
                 var toDate = DateTime.UtcNow;
@@ -93,7 +93,7 @@ namespace SegurosApp.API.Controllers
                     }
                 };
 
-                _logger.LogInformation("✅ Dashboard generado: {TotalScans} scans, {VelneoSuccessRate:F1}% éxito Velneo",
+                _logger.LogInformation("Dashboard generado: {TotalScans} scans, {VelneoSuccessRate:F1}% éxito Velneo",
                     dashboard.TotalScansThisMonth, dashboard.VelneoSuccessRate);
 
                 return Ok(ApiResponse<CompleteDashboardDto>.SuccessResult(
@@ -102,7 +102,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando dashboard");
+                _logger.LogError(ex, "Error generando dashboard");
                 return StatusCode(500, ApiResponse<CompleteDashboardDto>.ErrorResult("Error interno del servidor"));
             }
         }
@@ -120,7 +120,7 @@ namespace SegurosApp.API.Controllers
                     return Unauthorized(ApiResponse<List<DocumentHistoryDto>>.ErrorResult("Usuario no autenticado"));
                 }
 
-                _logger.LogInformation("🔍 Usuario {UserId} consultando documentos pendientes Velneo", userId);
+                _logger.LogInformation("Usuario {UserId} consultando documentos pendientes Velneo", userId);
 
                 var pendingDocs = await _documentService.GetPendingVelneoScansAsync(userId.Value, limit);
 
@@ -130,7 +130,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo documentos pendientes Velneo");
+                _logger.LogError(ex, "Error obteniendo documentos pendientes Velneo");
                 return StatusCode(500, ApiResponse<List<DocumentHistoryDto>>.ErrorResult("Error interno del servidor"));
             }
         }
@@ -151,7 +151,7 @@ namespace SegurosApp.API.Controllers
                 var fromDate = DateTime.UtcNow.AddDays(-days);
                 var toDate = DateTime.UtcNow;
 
-                _logger.LogInformation("📊 Usuario {UserId} consultando métricas detalladas Velneo", userId);
+                _logger.LogInformation("Usuario {UserId} consultando métricas detalladas Velneo", userId);
 
                 var metrics = await _documentService.GetVelneoIntegrationMetricsAsync(userId.Value, fromDate, toDate);
 
@@ -161,7 +161,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo métricas detalladas Velneo");
+                _logger.LogError(ex, "Error obteniendo métricas detalladas Velneo");
                 return StatusCode(500, ApiResponse<VelneoIntegrationMetricsDto>.ErrorResult("Error interno del servidor"));
             }
         }

@@ -26,7 +26,7 @@ namespace SegurosApp.API.Services
         public void SetCurrentTenantUserId(int userId)
         {
             _currentTenantUserId = userId;
-            _logger.LogDebug("🏢 TenantService - UserId establecido: {UserId}", userId);
+            _logger.LogDebug("TenantService - UserId establecido: {UserId}", userId);
         }
 
         public int? GetCurrentTenantUserId()
@@ -34,7 +34,6 @@ namespace SegurosApp.API.Services
             if (_currentTenantUserId.HasValue)
                 return _currentTenantUserId.Value;
 
-            // Fallback: intentar obtener desde el HttpContext
             var httpContext = _httpContextAccessor.HttpContext;
             if (httpContext?.User?.Identity?.IsAuthenticated == true)
             {
@@ -56,7 +55,7 @@ namespace SegurosApp.API.Services
             var userId = GetCurrentTenantUserId();
             if (!userId.HasValue)
             {
-                _logger.LogWarning("⚠️ No se pudo obtener UserId para tenant");
+                _logger.LogWarning("No se pudo obtener UserId para tenant");
                 return null;
             }
 
@@ -67,44 +66,41 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogDebug("🔍 Buscando configuración tenant para UserId: {UserId}", userId);
-
-                // Buscar usuario con su TenantId
+                _logger.LogDebug("Buscando configuración tenant para UserId: {UserId}", userId);
                 var user = await _context.Users
                     .AsNoTracking()
                     .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
 
                 if (user == null)
                 {
-                    _logger.LogWarning("⚠️ Usuario {UserId} no encontrado o inactivo", userId);
+                    _logger.LogWarning("Usuario {UserId} no encontrado o inactivo", userId);
                     return null;
                 }
 
                 if (!user.TenantId.HasValue)
                 {
-                    _logger.LogWarning("⚠️ Usuario {UserId} no tiene TenantId asignado", userId);
+                    _logger.LogWarning("Usuario {UserId} no tiene TenantId asignado", userId);
                     return null;
                 }
 
-                // Buscar configuración del tenant
                 var tenantConfig = await _context.TenantConfigurations
                     .AsNoTracking()
                     .FirstOrDefaultAsync(t => t.Id == user.TenantId.Value && t.IsActive);
 
                 if (tenantConfig == null)
                 {
-                    _logger.LogWarning("⚠️ TenantConfiguration {TenantId} no encontrado o inactivo", user.TenantId.Value);
+                    _logger.LogWarning("TenantConfiguration {TenantId} no encontrado o inactivo", user.TenantId.Value);
                     return null;
                 }
 
-                _logger.LogInformation("✅ Configuración tenant obtenida - User: {UserId}, Tenant: {TenantName}, Velneo: {VelneoUrl}",
+                _logger.LogInformation("Configuración tenant obtenida - User: {UserId}, Tenant: {TenantName}, Velneo: {VelneoUrl}",
                     userId, tenantConfig.TenantName, tenantConfig.VelneoBaseUrl);
 
                 return tenantConfig;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo configuración tenant para UserId: {UserId}", userId);
+                _logger.LogError(ex, "Error obteniendo configuración tenant para UserId: {UserId}", userId);
                 return null;
             }
         }

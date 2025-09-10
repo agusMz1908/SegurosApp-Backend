@@ -59,14 +59,14 @@ namespace SegurosApp.API.Services
                     LastBillingDate = lastBilling?.GeneratedAt ?? DateTime.MinValue
                 };
 
-                _logger.LogInformation("📊 Stats mes actual: {PolizasCount} pólizas, tier '{TierName}', costo estimado ${EstimatedCost}",
+                _logger.LogInformation("Stats mes actual: {PolizasCount} pólizas, tier '{TierName}', costo estimado ${EstimatedCost}",
                     polizasCount, result.ApplicableTierName, estimatedCost);
 
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo estadísticas del mes actual");
+                _logger.LogError(ex, "Error obteniendo estadísticas del mes actual");
                 throw;
             }
         }
@@ -74,7 +74,7 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔄 Generando factura mensual para {Year}/{Month}", year, month);
+                _logger.LogInformation("Generando factura mensual para {Year}/{Month}", year, month);
                 var existingBill = await _context.MonthlyBilling
                     .FirstOrDefaultAsync(mb => mb.BillingYear == year && mb.BillingMonth == month);
 
@@ -97,7 +97,7 @@ namespace SegurosApp.API.Services
 
                 if (successfulScans.Count == 0)
                 {
-                    _logger.LogWarning("⚠️ No hay pólizas exitosas para facturar en {Month}/{Year}", month, year);
+                    _logger.LogWarning("No hay pólizas exitosas para facturar en {Month}/{Year}", month, year);
                     throw new InvalidOperationException($"No hay pólizas para facturar en {month}/{year}");
                 }
 
@@ -152,7 +152,7 @@ namespace SegurosApp.API.Services
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Factura mensual generada: ID={BillId}, {PolizasCount} pólizas, total=${TotalAmount}",
+                _logger.LogInformation("Factura mensual generada: ID={BillId}, {PolizasCount} pólizas, total=${TotalAmount}",
                     monthlyBill.Id, successfulScans.Count, totalAmount);
 
                 return new MonthlyBillingDto
@@ -177,7 +177,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando factura mensual para {Year}/{Month}", year, month);
+                _logger.LogError(ex, "Error generando factura mensual para {Year}/{Month}", year, month);
                 throw;
             }
         }
@@ -216,12 +216,12 @@ namespace SegurosApp.API.Services
                     BillingItemsCount = bill.BillingItems.Count
                 }).ToList();
 
-                _logger.LogInformation("📄 Obtenidas {Count} facturas de la empresa", result.Count);
+                _logger.LogInformation("Obtenidas {Count} facturas de la empresa", result.Count);
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo facturas de la empresa");
+                _logger.LogError(ex, "Error obteniendo facturas de la empresa");
                 throw;
             }
         }
@@ -242,12 +242,12 @@ namespace SegurosApp.API.Services
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("💳 Factura {BillId} marcada como pagada: {PaymentMethod}", billId, paymentMethod);
+                _logger.LogInformation("Factura {BillId} marcada como pagada: {PaymentMethod}", billId, paymentMethod);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error marcando factura {BillId} como pagada", billId);
+                _logger.LogError(ex, "Error marcando factura {BillId} como pagada", billId);
                 throw;
             }
         }
@@ -390,8 +390,6 @@ namespace SegurosApp.API.Services
             {
                 var endDate = DateTime.UtcNow;
                 var startDate = endDate.AddMonths(-months);
-
-                // ✅ FIX: Calcular año y mes mínimos para el filtro en lugar de usar DateTime constructor
                 var minYear = startDate.Year;
                 var minMonth = startDate.Month;
 
@@ -401,7 +399,6 @@ namespace SegurosApp.API.Services
                                 (mb.BillingYear == minYear && mb.BillingMonth >= minMonth))
                     .ToListAsync();
 
-                // Revenue mensual
                 var monthlyRevenue = bills
                     .GroupBy(b => new { b.BillingYear, b.BillingMonth })
                     .Select(g => new MonthlyRevenueDto
@@ -418,7 +415,6 @@ namespace SegurosApp.API.Services
                     .ThenBy(mr => mr.Month)
                     .ToList();
 
-                // Métricas totales
                 var totalMetrics = new RevenueMetricsDto
                 {
                     TotalRevenue = bills.Sum(b => b.TotalAmount),
@@ -429,7 +425,6 @@ namespace SegurosApp.API.Services
                     TotalPolizasProcessed = bills.Sum(b => b.TotalPolizasEscaneadas)
                 };
 
-                // Performance por tier
                 var tierPerformance = bills
                     .GroupBy(b => new { b.AppliedTier.TierName, b.AppliedTier.PricePerPoliza, b.AppliedTier.MinPolizas, b.AppliedTier.MaxPolizas })
                     .Select(g => new TierPerformanceDto
@@ -443,12 +438,10 @@ namespace SegurosApp.API.Services
                     })
                     .ToList();
 
-                // Calcular porcentajes
                 var totalTierRevenue = tierPerformance.Sum(tp => tp.TotalRevenue);
                 tierPerformance.ForEach(tp =>
                     tp.RevenuePercentage = totalTierRevenue > 0 ? (tp.TotalRevenue / totalTierRevenue) * 100 : 0);
 
-                // Análisis de crecimiento
                 var growthAnalysis = CalculateGrowthAnalysis(monthlyRevenue);
 
                 var analytics = new RevenueAnalyticsDto
@@ -460,14 +453,14 @@ namespace SegurosApp.API.Services
                     GeneratedAt = DateTime.UtcNow
                 };
 
-                _logger.LogInformation("📈 Analytics generado: ${TotalRevenue} ingresos totales en {Months} meses",
+                _logger.LogInformation("Analytics generado: ${TotalRevenue} ingresos totales en {Months} meses",
                     totalMetrics.TotalRevenue, months);
 
                 return analytics;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando analytics de ingresos");
+                _logger.LogError(ex, "Error generando analytics de ingresos");
                 throw;
             }
         }

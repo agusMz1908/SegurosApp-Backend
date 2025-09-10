@@ -47,7 +47,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo configuración Azure");
+                _logger.LogError(ex, "Error obteniendo configuración Azure");
                 return StatusCode(500, new { error = ex.Message });
             }
         }
@@ -76,7 +76,7 @@ namespace SegurosApp.API.Controllers
                 httpClient.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", apiKey);
 
                 var testUrl = $"{endpoint.TrimEnd('/')}/formrecognizer/info?api-version=2023-07-31";
-                _logger.LogInformation("🧪 Testing connectivity: {Url}", testUrl);
+                _logger.LogInformation("Testing connectivity: {Url}", testUrl);
 
                 var response = await httpClient.GetAsync(testUrl);
 
@@ -107,7 +107,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en health check de Azure");
+                _logger.LogError(ex, "Error en health check de Azure");
                 return StatusCode(500, new { success = false, error = ex.Message });
             }
         }
@@ -139,7 +139,7 @@ namespace SegurosApp.API.Controllers
                 {
                     try
                     {
-                        _logger.LogInformation("🔍 Testing model endpoint: {Url}", url);
+                        _logger.LogInformation("Testing model endpoint: {Url}", url);
                         var response = await httpClient.GetAsync(url);
 
                         if (response.IsSuccessStatusCode)
@@ -168,7 +168,7 @@ namespace SegurosApp.API.Controllers
                                 statusCode = response.StatusCode,
                                 error = errorContent
                             });
-                            _logger.LogWarning("❌ Failed with API version {Version}: {StatusCode}", version, response.StatusCode);
+                            _logger.LogWarning("Failed with API version {Version}: {StatusCode}", version, response.StatusCode);
                         }
                     }
                     catch (Exception ex)
@@ -189,7 +189,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo información del modelo");
+                _logger.LogError(ex, "Error obteniendo información del modelo");
                 return StatusCode(500, new { success = false, error = ex.Message });
             }
         }
@@ -218,13 +218,13 @@ namespace SegurosApp.API.Controllers
                 {
                     try
                     {
-                        _logger.LogInformation("🔍 Listing models with: {Name}", name);
+                        _logger.LogInformation("Listing models with: {Name}", name);
                         var response = await httpClient.GetAsync(url);
 
                         if (response.IsSuccessStatusCode)
                         {
                             var content = await response.Content.ReadAsStringAsync();
-                            _logger.LogInformation("✅ SUCCESS listing models with: {Name}", name);
+                            _logger.LogInformation("SUCCESS listing models with: {Name}", name);
 
                             var jsonResponse = JsonSerializer.Deserialize<JsonElement>(content);
                             var models = new List<object>();
@@ -265,7 +265,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error listando modelos");
+                _logger.LogError(ex, "Error listando modelos");
                 return StatusCode(500, new { success = false, error = ex.Message });
             }
         }
@@ -287,7 +287,7 @@ namespace SegurosApp.API.Controllers
                 var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
                 var modelId = _configuration["AzureDocumentIntelligence:ModelId"];
 
-                _logger.LogInformation("🧪 Test processing: {FileName} ({FileSize} bytes)", file.FileName, file.Length);
+                _logger.LogInformation("Test processing: {FileName} ({FileSize} bytes)", file.FileName, file.Length);
 
                 try
                 {
@@ -345,7 +345,7 @@ namespace SegurosApp.API.Controllers
                 catch (RequestFailedException ex)
                 {
                     stopwatch.Stop();
-                    _logger.LogError("❌ Azure RequestFailedException: {Status} - {ErrorCode} - {Message}",
+                    _logger.LogError("Azure RequestFailedException: {Status} - {ErrorCode} - {Message}",
                         ex.Status, ex.ErrorCode, ex.Message);
 
                     return BadRequest(new
@@ -366,7 +366,7 @@ namespace SegurosApp.API.Controllers
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogError(ex, "❌ Error en test de procesamiento");
+                _logger.LogError(ex, "Error en test de procesamiento");
                 return StatusCode(500, new
                 {
                     success = false,
@@ -418,7 +418,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en diagnósticos completos");
+                _logger.LogError(ex, "Error en diagnósticos completos");
                 return StatusCode(500, new { success = false, error = ex.Message });
             }
         }

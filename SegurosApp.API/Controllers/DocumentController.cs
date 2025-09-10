@@ -83,7 +83,7 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                _logger.LogInformation("📄 Upload con contexto iniciado: {FileName} - Cliente:{ClienteId}, Compañía:{CompaniaId}, Sección:{SeccionId}",
+                _logger.LogInformation("Upload con contexto iniciado: {FileName} - Cliente:{ClienteId}, Compañía:{CompaniaId}, Sección:{SeccionId}",
                     file.FileName, clienteId, companiaId, seccionId);
 
                 var validationResult = await ValidatePreSelectionAsync(clienteId, companiaId, seccionId);
@@ -144,14 +144,14 @@ namespace SegurosApp.API.Controllers
                     }
                 };
 
-                _logger.LogInformation("✅ Upload con contexto completado: {ScanId} - Listo para Velneo: {IsReady}",
+                _logger.LogInformation("Upload con contexto completado: {ScanId} - Listo para Velneo: {IsReady}",
                     scanResult.ScanId, response.IsReadyForVelneo);
 
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en upload con contexto: {FileName}", file?.FileName ?? "unknown");
+                _logger.LogError(ex, "Error en upload con contexto: {FileName}", file?.FileName ?? "unknown");
                 return StatusCode(500, new DocumentScanWithContextResponse
                 {
                     Success = false,
@@ -166,7 +166,7 @@ namespace SegurosApp.API.Controllers
         {
             try
             {
-                _logger.LogInformation("🔍 Validando pre-selección: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                _logger.LogInformation("Validando pre-selección: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
                     clienteId, companiaId, seccionId);
 
                 var validationErrors = new List<string>();
@@ -196,12 +196,12 @@ namespace SegurosApp.API.Controllers
                 catch (HttpRequestException ex)
                 {
                     validationErrors.Add("Error de conectividad validando cliente - Servicio Velneo no disponible");
-                    _logger.LogError(ex, "❌ Error de conectividad validando cliente {ClienteId}", clienteId);
+                    _logger.LogError(ex, "Error de conectividad validando cliente {ClienteId}", clienteId);
                 }
                 catch (Exception ex)
                 {
                     validationErrors.Add($"Error inesperado validando cliente: {ex.Message}");
-                    _logger.LogError(ex, "❌ Error inesperado validando cliente {ClienteId}", clienteId);
+                    _logger.LogError(ex, "Error inesperado validando cliente {ClienteId}", clienteId);
                 }
 
                 try
@@ -212,28 +212,28 @@ namespace SegurosApp.API.Controllers
                     if (compania == null)
                     {
                         validationErrors.Add($"Compañía con ID {companiaId} no encontrada en Velneo");
-                        _logger.LogWarning("❌ Compañía {CompaniaId} no encontrada", companiaId);
+                        _logger.LogWarning("Compañía {CompaniaId} no encontrada", companiaId);
                     }
                     else if (!compania.IsActive)
                     {
                         validationErrors.Add($"Compañía '{compania.DisplayName}' está marcada como inactiva");
-                        _logger.LogWarning("⚠️ Compañía {CompaniaId} está inactiva", companiaId);
+                        _logger.LogWarning("⚠Compañía {CompaniaId} está inactiva", companiaId);
                     }
                     else
                     {
-                        _logger.LogInformation("✅ Compañía validada: {CompaniaId} - {DisplayName}",
+                        _logger.LogInformation("Compañía validada: {CompaniaId} - {DisplayName}",
                             companiaId, compania.DisplayName);
                     }
                 }
                 catch (HttpRequestException ex)
                 {
                     validationErrors.Add("Error de conectividad validando compañía - Servicio Velneo no disponible");
-                    _logger.LogError(ex, "❌ Error de conectividad validando compañía {CompaniaId}", companiaId);
+                    _logger.LogError(ex, "Error de conectividad validando compañía {CompaniaId}", companiaId);
                 }
                 catch (Exception ex)
                 {
                     validationErrors.Add($"Error inesperado validando compañía: {ex.Message}");
-                    _logger.LogError(ex, "❌ Error inesperado validando compañía {CompaniaId}", companiaId);
+                    _logger.LogError(ex, "Error inesperado validando compañía {CompaniaId}", companiaId);
                 }
 
                 try
@@ -244,7 +244,7 @@ namespace SegurosApp.API.Controllers
                     if (seccion == null)
                     {
                         validationErrors.Add($"Sección con ID {seccionId} no encontrada en Velneo");
-                        _logger.LogWarning("❌ Sección {SeccionId} no encontrada", seccionId);
+                        _logger.LogWarning("Sección {SeccionId} no encontrada", seccionId);
 
                         if (secciones.Any())
                         {
@@ -259,35 +259,35 @@ namespace SegurosApp.API.Controllers
                     else if (!seccion.IsActive)
                     {
                         validationErrors.Add($"Sección '{seccion.DisplayName}' está marcada como inactiva");
-                        _logger.LogWarning("⚠️ Sección {SeccionId} está inactiva", seccionId);
+                        _logger.LogWarning("Sección {SeccionId} está inactiva", seccionId);
                     }
                     else
                     {
-                        _logger.LogInformation("✅ Sección validada: {SeccionId} - {DisplayName}",
+                        _logger.LogInformation("Sección validada: {SeccionId} - {DisplayName}",
                             seccionId, seccion.DisplayName);
                     }
                 }
                 catch (HttpRequestException ex)
                 {
                     validationErrors.Add("Error de conectividad validando sección - Servicio Velneo no disponible");
-                    _logger.LogError(ex, "❌ Error de conectividad validando sección {SeccionId}", seccionId);
+                    _logger.LogError(ex, "Error de conectividad validando sección {SeccionId}", seccionId);
                 }
                 catch (Exception ex)
                 {
                     validationErrors.Add($"Error inesperado validando sección: {ex.Message}");
-                    _logger.LogError(ex, "❌ Error inesperado validando sección {SeccionId}", seccionId);
+                    _logger.LogError(ex, "Error inesperado validando sección {SeccionId}", seccionId);
                 }
 
                 if (cliente != null && compania != null && seccion != null)
                 {
-                    _logger.LogDebug("🔍 Validaciones lógicas: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId} - Todos válidos e independientes",
+                    _logger.LogDebug("Validaciones lógicas: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId} - Todos válidos e independientes",
                         clienteId, companiaId, seccionId);
                 }
 
                 if (validationErrors.Any())
                 {
                     var errorMessage = string.Join("; ", validationErrors);
-                    _logger.LogWarning("❌ Validación falló: {ErrorCount} errores - {Errors}",
+                    _logger.LogWarning("Validación falló: {ErrorCount} errores - {Errors}",
                         validationErrors.Count, errorMessage);
 
                     return new PreSelectionValidationResult
@@ -306,7 +306,7 @@ namespace SegurosApp.API.Controllers
                     Seccion = seccion!
                 };
 
-                _logger.LogInformation("✅ Pre-selección validada exitosamente: Cliente='{ClienteName}', Compañía='{CompaniaName}', Sección='{SeccionName}'",
+                _logger.LogInformation("Pre-selección validada exitosamente: Cliente='{ClienteName}', Compañía='{CompaniaName}', Sección='{SeccionName}'",
                     validatedData.ClienteDisplayName, validatedData.CompaniaDisplayName, validatedData.SeccionDisplayName);
 
                 return new PreSelectionValidationResult
@@ -319,7 +319,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error crítico en validación de pre-selección");
+                _logger.LogError(ex, "Error crítico en validación de pre-selección");
 
                 return new PreSelectionValidationResult
                 {
@@ -354,12 +354,12 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                _logger.LogInformation("🚀 Creando póliza en Velneo para scan {ScanId}", scanId);
+                _logger.LogInformation("Creando póliza en Velneo para scan {ScanId}", scanId);
 
                 var scanData = await _azureDocumentService.GetScanByIdAsync(scanId, userId.Value);
                 if (scanData == null)
                 {
-                    await RecordMetricAsync(VelneoOperationType.CREATE, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.POLIZA_NUEVA, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Documento escaneado no encontrado");
 
                     return NotFound(new CreatePolizaVelneoResponse
@@ -372,7 +372,7 @@ namespace SegurosApp.API.Controllers
                 var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value, overrides);
                 var velneoResult = await _masterDataService.CreatePolizaAsync(velneoRequest);
 
-                await RecordMetricAsync(VelneoOperationType.CREATE, userId.Value, scanId, velneoResult, stopwatch.ElapsedMilliseconds);
+                await RecordMetricAsync(VelneoOperationType.POLIZA_NUEVA, userId.Value, scanId, velneoResult, stopwatch.ElapsedMilliseconds);
 
                 if (velneoResult.Success)
                 {
@@ -380,7 +380,7 @@ namespace SegurosApp.API.Controllers
                         scanId,
                         velneoResult.VelneoPolizaId?.ToString(),
                         true);
-                    _logger.LogInformation("✅ Póliza creada exitosamente en Velneo: ScanId={ScanId}, VelneoId={VelneoId}",
+                    _logger.LogInformation("Póliza creada exitosamente en Velneo: ScanId={ScanId}, VelneoId={VelneoId}",
                         scanId, velneoResult.VelneoPolizaId);
                 }
 
@@ -398,11 +398,11 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error creando póliza en Velneo para scan {ScanId}", scanId);
+                _logger.LogError(ex, "Error creando póliza en Velneo para scan {ScanId}", scanId);
 
                 if (userId.HasValue)
                 {
-                    await RecordMetricAsync(VelneoOperationType.CREATE, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.POLIZA_NUEVA, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, ex.Message);
                 }
 
@@ -468,9 +468,9 @@ namespace SegurosApp.API.Controllers
 
                 if (scan == null)
                 {
-                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
+                    _logger.LogWarning("Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
 
-                    await RecordMetricAsync(VelneoOperationType.MODIFY, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.CAMBIO, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Scan no encontrado", request.PolizaAnteriorId);
 
                     return NotFound(new ModifyPolizaResponse
@@ -483,9 +483,9 @@ namespace SegurosApp.API.Controllers
                 var polizaAnterior = await _masterDataService.GetPolizaDetalleAsync(request.PolizaAnteriorId);
                 if (polizaAnterior == null)
                 {
-                    _logger.LogWarning("⚠️ Póliza anterior {PolizaAnteriorId} no encontrada en Velneo", request.PolizaAnteriorId);
+                    _logger.LogWarning("Póliza anterior {PolizaAnteriorId} no encontrada en Velneo", request.PolizaAnteriorId);
 
-                    await RecordMetricAsync(VelneoOperationType.MODIFY, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.CAMBIO, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Póliza anterior no encontrada", request.PolizaAnteriorId);
 
                     return BadRequest(new ModifyPolizaResponse
@@ -497,9 +497,9 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
+                _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
                 var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value);
-                _logger.LogInformation("📝 Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
+                _logger.LogInformation("Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
                     velneoRequest.clinro, velneoRequest.comcod, velneoRequest.conpol);
 
                 var result = await _masterDataService.ModifyPolizaAsync(
@@ -508,7 +508,7 @@ namespace SegurosApp.API.Controllers
                     request.TipoCambio,
                     request.Observaciones);
 
-                await RecordMetricAsync(VelneoOperationType.MODIFY, userId.Value, scanId, result,
+                await RecordMetricAsync(VelneoOperationType.CAMBIO, userId.Value, scanId, result,
                     stopwatch.ElapsedMilliseconds, polizaAnteriorId: request.PolizaAnteriorId);
 
                 if (result.Success && result.VelneoPolizaId.HasValue)
@@ -516,22 +516,22 @@ namespace SegurosApp.API.Controllers
                     try
                     {
                         await UpdateScanWithVelneoInfoAsync(scanId, result.PolizaNumber, true);
-                        _logger.LogInformation("💰 Billing actualizado para scan {ScanId}", scanId);
+                        _logger.LogInformation("Billing actualizado para scan {ScanId}", scanId);
                     }
                     catch (Exception billingEx)
                     {
-                        _logger.LogWarning(billingEx, "⚠️ Error actualizando billing para scan {ScanId}, pero el cambio fue exitoso", scanId);
+                        _logger.LogWarning(billingEx, "Error actualizando billing para scan {ScanId}, pero el cambio fue exitoso", scanId);
                     }
                 }
 
                 if (result.Success)
                 {
-                    _logger.LogInformation("✅ Cambio de póliza completado exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
+                    _logger.LogInformation("Cambio de póliza completado exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
                         scanId, result.VelneoPolizaId, request.PolizaAnteriorId);
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Cambio de póliza falló - Scan: {ScanId}, Error: {Message}",
+                    _logger.LogWarning("Cambio de póliza falló - Scan: {ScanId}, Error: {Message}",
                         scanId, result.Message);
                 }
 
@@ -540,11 +540,11 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error realizando cambio de póliza para scan {ScanId}", scanId);
+                _logger.LogError(ex, "Error realizando cambio de póliza para scan {ScanId}", scanId);
 
                 if (userId.HasValue)
                 {
-                    await RecordMetricAsync(VelneoOperationType.MODIFY, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.CAMBIO, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, ex.Message, request.PolizaAnteriorId);
                 }
 
@@ -575,7 +575,7 @@ namespace SegurosApp.API.Controllers
 
             try
             {
-                _logger.LogInformation("🔄 Iniciando renovación de póliza para scan {ScanId} - Póliza anterior: {PolizaAnteriorId}",
+                _logger.LogInformation("Iniciando renovación de póliza para scan {ScanId} - Póliza anterior: {PolizaAnteriorId}",
                     scanId, request.PolizaAnteriorId);
 
                 if (request.PolizaAnteriorId <= 0)
@@ -602,9 +602,9 @@ namespace SegurosApp.API.Controllers
 
                 if (scan == null)
                 {
-                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
+                    _logger.LogWarning("Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
 
-                    await RecordMetricAsync(VelneoOperationType.RENEW, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.RENOVACION, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Scan no encontrado", request.PolizaAnteriorId);
 
                     return NotFound(new RenewPolizaResponse
@@ -617,9 +617,9 @@ namespace SegurosApp.API.Controllers
                 var polizaAnterior = await _masterDataService.GetPolizaDetalleAsync(request.PolizaAnteriorId);
                 if (polizaAnterior == null)
                 {
-                    _logger.LogWarning("⚠️ Póliza anterior {PolizaAnteriorId} no encontrada en Velneo", request.PolizaAnteriorId);
+                    _logger.LogWarning("Póliza anterior {PolizaAnteriorId} no encontrada en Velneo", request.PolizaAnteriorId);
 
-                    await RecordMetricAsync(VelneoOperationType.RENEW, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.RENOVACION, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Póliza anterior no encontrada", request.PolizaAnteriorId);
 
                     return BadRequest(new RenewPolizaResponse
@@ -630,10 +630,10 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                _logger.LogInformation("✅ Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
+                _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
                 var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value);
 
-                _logger.LogInformation("📝 Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
+                _logger.LogInformation("Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
                     velneoRequest.clinro, velneoRequest.comcod, velneoRequest.conpol);
 
                 var result = await _masterDataService.RenewPolizaAsync(
@@ -642,7 +642,7 @@ namespace SegurosApp.API.Controllers
                     request.Observaciones,
                     request.ValidarVencimiento);
 
-                await RecordMetricAsync(VelneoOperationType.RENEW, userId.Value, scanId, result,
+                await RecordMetricAsync(VelneoOperationType.RENOVACION, userId.Value, scanId, result,
                     stopwatch.ElapsedMilliseconds, polizaAnteriorId: request.PolizaAnteriorId);
 
                 if (result.Success && result.VelneoPolizaId.HasValue)
@@ -650,22 +650,22 @@ namespace SegurosApp.API.Controllers
                     try
                     {
                         await UpdateScanWithVelneoInfoAsync(scanId, result.PolizaNumber, true);
-                        _logger.LogInformation("💰 Billing actualizado para scan {ScanId}", scanId);
+                        _logger.LogInformation("Billing actualizado para scan {ScanId}", scanId);
                     }
                     catch (Exception billingEx)
                     {
-                        _logger.LogWarning(billingEx, "⚠️ Error actualizando billing para scan {ScanId}, pero la renovación fue exitosa", scanId);
+                        _logger.LogWarning(billingEx, "Error actualizando billing para scan {ScanId}, pero la renovación fue exitosa", scanId);
                     }
                 }
 
                 if (result.Success)
                 {
-                    _logger.LogInformation("✅ Renovación de póliza completada exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
+                    _logger.LogInformation("Renovación de póliza completada exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
                         scanId, result.VelneoPolizaId, request.PolizaAnteriorId);
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Renovación de póliza falló - Scan: {ScanId}, Error: {Message}",
+                    _logger.LogWarning("Renovación de póliza falló - Scan: {ScanId}, Error: {Message}",
                         scanId, result.Message);
                 }
 
@@ -674,11 +674,11 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error realizando renovación de póliza para scan {ScanId}", scanId);
+                _logger.LogError(ex, "Error realizando renovación de póliza para scan {ScanId}", scanId);
 
                 if (userId.HasValue)
                 {
-                    await RecordMetricAsync(VelneoOperationType.RENEW, userId.Value, scanId, null,
+                    await RecordMetricAsync(VelneoOperationType.RENOVACION, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, ex.Message, request.PolizaAnteriorId);
                 }
 
@@ -721,25 +721,25 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                _logger.LogInformation("📄 Upload de documento iniciado: {FileName} por usuario: {UserId}",
+                _logger.LogInformation("Upload de documento iniciado: {FileName} por usuario: {UserId}",
                     file.FileName, userId);
 
                 var result = await _azureDocumentService.ProcessDocumentAsync(file, userId.Value);
 
                 if (!result.Success)
                 {
-                    _logger.LogWarning("⚠️ Error procesando documento: {FileName} - {Error}",
+                    _logger.LogWarning("Error procesando documento: {FileName} - {Error}",
                         file.FileName, result.ErrorMessage);
                     return BadRequest(result);
                 }
 
                 if (result.IsDuplicate)
                 {
-                    _logger.LogInformation("🔄 Documento duplicado detectado: {FileName}", file.FileName);
+                    _logger.LogInformation("Documento duplicado detectado: {FileName}", file.FileName);
                 }
                 else
                 {
-                    _logger.LogInformation("✅ Documento procesado exitosamente: {ScanId} - {FileName}",
+                    _logger.LogInformation("Documento procesado exitosamente: {ScanId} - {FileName}",
                         result.ScanId, file.FileName);
                 }
 
@@ -747,7 +747,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en upload de documento: {FileName}", file?.FileName ?? "unknown");
+                _logger.LogError(ex, "Error en upload de documento: {FileName}", file?.FileName ?? "unknown");
                 return StatusCode(500, new DocumentScanResponse
                 {
                     Success = false,
@@ -771,7 +771,7 @@ namespace SegurosApp.API.Controllers
                     return Unauthorized(new { success = false, message = "Usuario no autenticado" });
                 }
 
-                _logger.LogInformation("🔄 Iniciando mapeo de póliza para scan {ScanId} - Usuario: {UserId}",
+                _logger.LogInformation("Iniciando mapeo de póliza para scan {ScanId} - Usuario: {UserId}",
                     scanId, userId);
 
                 var scanData = await _azureDocumentService.GetScanByIdAsync(scanId, userId.Value);
@@ -795,7 +795,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error mapeando póliza para scan {ScanId}", scanId);
+                _logger.LogError(ex, "Error mapeando póliza para scan {ScanId}", scanId);
                 return StatusCode(500, new { success = false, message = "Error interno del servidor" });
             }
         }
@@ -835,7 +835,7 @@ namespace SegurosApp.API.Controllers
                     Limit = Math.Min(limit, 100)
                 };
 
-                _logger.LogInformation("📋 Consultando historial de documentos - Usuario: {UserId}, Página: {Page}",
+                _logger.LogInformation("Consultando historial de documentos - Usuario: {UserId}, Página: {Page}",
                     userId, page);
 
                 var history = await _azureDocumentService.GetScanHistoryAsync(userId.Value, filters);
@@ -847,7 +847,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo historial de documentos");
+                _logger.LogError(ex, "Error obteniendo historial de documentos");
                 return StatusCode(500, ApiResponse<List<DocumentHistoryDto>>.ErrorResult("Error interno del servidor"));
             }
         }
@@ -866,14 +866,14 @@ namespace SegurosApp.API.Controllers
                     return Unauthorized(new { message = "Usuario no autenticado" });
                 }
 
-                _logger.LogInformation("🔍 Consultando detalle de documento: {ScanId} - Usuario: {UserId}",
+                _logger.LogInformation("Consultando detalle de documento: {ScanId} - Usuario: {UserId}",
                     scanId, userId);
 
                 var document = await _azureDocumentService.GetScanByIdAsync(scanId, userId.Value);
 
                 if (document == null)
                 {
-                    _logger.LogWarning("⚠️ Documento no encontrado: {ScanId}", scanId);
+                    _logger.LogWarning("Documento no encontrado: {ScanId}", scanId);
                     return NotFound(new { message = "Documento no encontrado" });
                 }
 
@@ -881,7 +881,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo detalle de documento: {ScanId}", scanId);
+                _logger.LogError(ex, "Error obteniendo detalle de documento: {ScanId}", scanId);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -904,7 +904,7 @@ namespace SegurosApp.API.Controllers
                 fromDate ??= DateTime.UtcNow.AddDays(-30);
                 toDate ??= DateTime.UtcNow;
 
-                _logger.LogInformation("📊 Consultando métricas - Usuario: {UserId}, Desde: {From}, Hasta: {To}",
+                _logger.LogInformation("Consultando métricas - Usuario: {UserId}, Desde: {From}, Hasta: {To}",
                     userId, fromDate, toDate);
 
                 var metrics = await _azureDocumentService.GetDocumentMetricsAsync(userId.Value, fromDate, toDate);
@@ -913,7 +913,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo métricas de documentos");
+                _logger.LogError(ex, "Error obteniendo métricas de documentos");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -941,14 +941,14 @@ namespace SegurosApp.API.Controllers
 
                 var forceReprocess = request?.ForceReprocess ?? false;
 
-                _logger.LogInformation("🔄 Reprocesando documento: {ScanId} - Usuario: {UserId}, Forzado: {Force}",
+                _logger.LogInformation("Reprocesando documento: {ScanId} - Usuario: {UserId}, Forzado: {Force}",
                     scanId, userId, forceReprocess);
 
                 var result = await _azureDocumentService.ReprocessDocumentAsync(scanId, userId.Value, forceReprocess);
 
                 if (!result.Success)
                 {
-                    _logger.LogWarning("⚠️ Error reprocesando documento: {ScanId} - {Error}",
+                    _logger.LogWarning("Error reprocesando documento: {ScanId} - {Error}",
                         scanId, result.ErrorMessage);
 
                     if (result.ErrorMessage?.Contains("no encontrado") == true)
@@ -957,12 +957,12 @@ namespace SegurosApp.API.Controllers
                     return BadRequest(result);
                 }
 
-                _logger.LogInformation("✅ Documento reprocesado exitosamente: {ScanId}", scanId);
+                _logger.LogInformation("Documento reprocesado exitosamente: {ScanId}", scanId);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error reprocesando documento: {ScanId}", scanId);
+                _logger.LogError(ex, "Error reprocesando documento: {ScanId}", scanId);
                 return StatusCode(500, new DocumentScanResponse
                 {
                     Success = false,
@@ -996,7 +996,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo configuración");
+                _logger.LogError(ex, "Error obteniendo configuración");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -1024,7 +1024,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en health check");
+                _logger.LogError(ex, "Error en health check");
                 return StatusCode(500, new
                 {
                     status = "unhealthy",
@@ -1338,7 +1338,7 @@ namespace SegurosApp.API.Controllers
                 var scan = await _context.DocumentScans.FindAsync(scanId);
                 if (scan == null)
                 {
-                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para guardar contexto", scanId);
+                    _logger.LogWarning("Scan {ScanId} no encontrado para guardar contexto", scanId);
                     return;
                 }
 
@@ -1350,12 +1350,12 @@ namespace SegurosApp.API.Controllers
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Contexto guardado en scan {ScanId}: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
+                _logger.LogInformation("Contexto guardado en scan {ScanId}: Cliente={ClienteId}, Compañía={CompaniaId}, Sección={SeccionId}",
                     scanId, clienteId, companiaId, seccionId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error guardando contexto en scan {ScanId}", scanId);
+                _logger.LogError(ex, "Error guardando contexto en scan {ScanId}", scanId);
                 throw;
             }
         }
@@ -1407,7 +1407,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "⚠️ Error registrando métrica, pero operación principal exitosa");
+                _logger.LogWarning(ex, "Error registrando métrica, pero operación principal exitosa");
             }
         }
     }

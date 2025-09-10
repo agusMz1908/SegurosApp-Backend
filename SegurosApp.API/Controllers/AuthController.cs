@@ -47,7 +47,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en login para usuario: {Username}", request.Username);
+                _logger.LogError(ex, "Error en login para usuario: {Username}", request.Username);
                 return StatusCode(500, new LoginResponse
                 {
                     Success = false,
@@ -79,7 +79,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en registro para usuario: {Username}", request.Username);
+                _logger.LogError(ex, "Error en registro para usuario: {Username}", request.Username);
                 return StatusCode(500, ApiResponse<UserDto>.ErrorResult("Error interno del servidor"));
             }
         }
@@ -108,7 +108,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo usuario actual");
+                _logger.LogError(ex, "Error obteniendo usuario actual");
                 return StatusCode(500, ApiResponse<UserDto>.ErrorResult("Error interno del servidor"));
             }
         }
@@ -144,7 +144,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error cambiando contraseña");
+                _logger.LogError(ex, "Error cambiando contraseña");
                 return StatusCode(500, ApiResponse.ErrorResult("Error interno del servidor"));
             }
         }
@@ -165,7 +165,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error validando token");
+                _logger.LogError(ex, "Error validando token");
                 return StatusCode(500, ApiResponse.ErrorResult("Error interno del servidor"));
             }
         }

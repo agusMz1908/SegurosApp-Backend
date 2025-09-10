@@ -18,7 +18,7 @@ namespace SegurosApp.API.Services
 
             try
             {
-                _logger.LogInformation("🧠 Iniciando extracción inteligente de {CamposCount} campos", rawFields.Count);
+                _logger.LogInformation("Iniciando extracción inteligente de {CamposCount} campos", rawFields.Count);
 
                 var camposExtraidos = rawFields.ToDictionary(
                     kvp => kvp.Key,
@@ -55,14 +55,14 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                _logger.LogInformation("✅ Datos procesados exitosamente: {ProcessedFields} campos",
+                _logger.LogInformation("Datos procesados exitosamente: {ProcessedFields} campos",
                     processedData.Count);
 
                 return processedData;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error procesando datos extraídos");
+                _logger.LogError(ex, "Error procesando datos extraídos");
                 return rawFields;
             }
         }
@@ -83,7 +83,7 @@ namespace SegurosApp.API.Services
                     var cleaned = CleanPolicyNumber(value);
                     if (!string.IsNullOrEmpty(cleaned))
                     {
-                        _logger.LogDebug("✅ Número de póliza encontrado: {PolicyNumber}", cleaned);
+                        _logger.LogDebug("Número de póliza encontrado: {PolicyNumber}", cleaned);
                         return cleaned;
                     }
                 }
@@ -99,7 +99,7 @@ namespace SegurosApp.API.Services
                     var cleaned = CleanPolicyNumber(match.Groups[1].Value);
                     if (!string.IsNullOrEmpty(cleaned))
                     {
-                        _logger.LogDebug("✅ Número de póliza extraído por regex: {PolicyNumber}", cleaned);
+                        _logger.LogDebug("Número de póliza extraído por regex: {PolicyNumber}", cleaned);
                         return cleaned;
                     }
                 }

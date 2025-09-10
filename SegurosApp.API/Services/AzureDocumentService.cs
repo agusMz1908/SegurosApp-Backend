@@ -38,14 +38,14 @@ namespace SegurosApp.API.Services
 
             if (string.IsNullOrEmpty(endpoint) || endpoint.Contains("PLACEHOLDER"))
             {
-                _logger.LogError("❌ Azure Endpoint es placeholder o vacío. Usando modo mock.");
+                _logger.LogError("Azure Endpoint es placeholder o vacío. Usando modo mock.");
                 _documentClient = null;
                 return;
             }
 
             if (string.IsNullOrEmpty(apiKey) || apiKey.Contains("PLACEHOLDER"))
             {
-                _logger.LogError("❌ Azure ApiKey es placeholder o vacío. Usando modo mock.");
+                _logger.LogError("Azure ApiKey es placeholder o vacío. Usando modo mock.");
                 _documentClient = null;
                 return;
             }
@@ -57,16 +57,16 @@ namespace SegurosApp.API.Services
                     new AzureKeyCredential(apiKey)
                 );
 
-                _logger.LogInformation("✅ Azure Document Intelligence Service inicializado correctamente");
+                _logger.LogInformation("Azure Document Intelligence Service inicializado correctamente");
             }
             catch (UriFormatException ex)
             {
-                _logger.LogError(ex, "❌ Error con formato de URI de Azure: {Endpoint}", endpoint);
+                _logger.LogError(ex, "Error con formato de URI de Azure: {Endpoint}", endpoint);
                 _documentClient = null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error inicializando Azure Document Intelligence");
+                _logger.LogError(ex, "Error inicializando Azure Document Intelligence");
                 _documentClient = null;
             }
         }
@@ -78,7 +78,7 @@ namespace SegurosApp.API.Services
 
             try
             {
-                _logger.LogInformation("📄 Procesando documento: {FileName} para usuario: {UserId}, compañía: {CompaniaId}",
+                _logger.LogInformation("Procesando documento: {FileName} para usuario: {UserId}, compañía: {CompaniaId}",
                     file.FileName, userId, companiaId ?? 0);
 
                 var validationResult = ValidateFile(file);
@@ -101,7 +101,7 @@ namespace SegurosApp.API.Services
 
                 if (existingScan != null)
                 {
-                    _logger.LogInformation("🔄 Documento duplicado detectado: {FileName}", file.FileName);
+                    _logger.LogInformation("Documento duplicado detectado: {FileName}", file.FileName);
 
                     stopwatch.Stop();
                     return new DocumentScanResponse
@@ -133,14 +133,14 @@ namespace SegurosApp.API.Services
                     var modelInfo = await _modelMappingService.GetModelByCompaniaIdAsync(companiaId.Value);
                     modelId = modelInfo.ModelId;
 
-                    _logger.LogInformation("🤖 Modelo seleccionado para compañía {CompaniaId}: {ModelId} - {Description}",
+                    _logger.LogInformation("Modelo seleccionado para compañía {CompaniaId}: {ModelId} - {Description}",
                         companiaId, modelId, modelInfo.Description);
                 }
                 else
                 {
                     modelId = _configuration["AzureDocumentIntelligence:ModelId"] ?? "poliza_vehiculos_bse";
 
-                    _logger.LogInformation("🤖 Usando modelo por defecto (sin compañía especificada): {ModelId}", modelId);
+                    _logger.LogInformation("Usando modelo por defecto (sin compañía especificada): {ModelId}", modelId);
                 }
 
                 var azureResult = await ProcessWithAzureAsync(file, modelId);
@@ -192,7 +192,7 @@ namespace SegurosApp.API.Services
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogError(ex, "❌ Error procesando documento: {FileName}", file.FileName);
+                _logger.LogError(ex, "Error procesando documento: {FileName}", file.FileName);
 
                 return new DocumentScanResponse
                 {
@@ -373,7 +373,7 @@ namespace SegurosApp.API.Services
 
         private async Task<AzureDocumentResult> ProcessWithAzureAsync(IFormFile file, string modelId)
         {
-            _logger.LogInformation("🤖 Procesando con Azure modelo: {ModelId}", modelId);
+            _logger.LogInformation("Procesando con Azure modelo: {ModelId}", modelId);
 
             if (_documentClient == null)
             {
@@ -383,7 +383,7 @@ namespace SegurosApp.API.Services
             using var stream = file.OpenReadStream();
             var binaryData = BinaryData.FromStream(stream);
 
-            _logger.LogInformation("📤 Enviando {FileSize} bytes a Azure con modelo {ModelId}...", file.Length, modelId);
+            _logger.LogInformation("Enviando {FileSize} bytes a Azure con modelo {ModelId}...", file.Length, modelId);
 
             try
             {
@@ -395,7 +395,7 @@ namespace SegurosApp.API.Services
                 var analyzeResult = operation.Value;
 
                 var confidence = (analyzeResult.Documents?.FirstOrDefault()?.Confidence ?? 0.5f);
-                _logger.LogInformation("✅ Azure procesó el documento. Confidence: {Confidence:P1}", confidence);
+                _logger.LogInformation("Azure procesó el documento. Confidence: {Confidence:P1}", confidence);
 
                 var extractedFields = ExtractRealFieldsFromAzureResult(analyzeResult);
 
@@ -410,16 +410,16 @@ namespace SegurosApp.API.Services
             }
             catch (RequestFailedException ex)
             {
-                _logger.LogError("❌ Azure RequestFailedException: Status={Status}, ErrorCode={ErrorCode}, Message={Message}",
+                _logger.LogError("Azure RequestFailedException: Status={Status}, ErrorCode={ErrorCode}, Message={Message}",
                     ex.Status, ex.ErrorCode, ex.Message);
 
-                _logger.LogError("❌ Full exception: {Exception}", ex.ToString());
+                _logger.LogError("Full exception: {Exception}", ex.ToString());
 
                 throw new InvalidOperationException($"Azure Document Intelligence error: {ex.Message}", ex);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error inesperado procesando con Azure");
+                _logger.LogError(ex, "Error inesperado procesando con Azure");
                 throw;
             }
         }
@@ -432,18 +432,18 @@ namespace SegurosApp.API.Services
             {
                 if (analyzeResult?.Documents == null)
                 {
-                    _logger.LogWarning("⚠️ AnalyzeResult o Documents es null");
+                    _logger.LogWarning("AnalyzeResult o Documents es null");
                     return extractedFields;
                 }
 
                 foreach (var document in analyzeResult.Documents)
                 {
-                    _logger.LogInformation("📋 Documento procesado con confianza: {Confidence:P1}",
+                    _logger.LogInformation("Documento procesado con confianza: {Confidence:P1}",
                         document.Confidence);
 
                     if (document.Fields == null)
                     {
-                        _logger.LogWarning("⚠️ Document.Fields es null");
+                        _logger.LogWarning("Document.Fields es null");
                         continue;
                     }
 
@@ -455,20 +455,20 @@ namespace SegurosApp.API.Services
                             if (!string.IsNullOrEmpty(value))
                             {
                                 extractedFields[field.Key] = value;
-                                _logger.LogInformation("📄 Campo: {Key} = {Value} (Confidence: {Confidence:P1})",
+                                _logger.LogInformation("Campo: {Key} = {Value} (Confidence: {Confidence:P1})",
                                     field.Key, value, field.Value.Confidence ?? 0);
                             }
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning("⚠️ Error extrayendo campo {FieldName}: {Error}", field.Key, ex.Message);
+                            _logger.LogWarning("Error extrayendo campo {FieldName}: {Error}", field.Key, ex.Message);
                         }
                     }
                 }
 
                 if (analyzeResult.KeyValuePairs != null)
                 {
-                    _logger.LogInformation("📝 Extrayendo {Count} pares clave-valor", analyzeResult.KeyValuePairs.Count);
+                    _logger.LogInformation("Extrayendo {Count} pares clave-valor", analyzeResult.KeyValuePairs.Count);
 
                     foreach (var kvp in analyzeResult.KeyValuePairs)
                     {
@@ -487,20 +487,20 @@ namespace SegurosApp.API.Services
                                 if (!extractedFields.ContainsKey(key))
                                 {
                                     extractedFields[key] = value;
-                                    _logger.LogInformation("📄 KVP: {Key} = {Value}", key, value);
+                                    _logger.LogInformation("KVP: {Key} = {Value}", key, value);
                                 }
                             }
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning("⚠️ Error extrayendo KVP: {Error}", ex.Message);
+                            _logger.LogWarning("Error extrayendo KVP: {Error}", ex.Message);
                         }
                     }
                 }
 
                 if (analyzeResult.Tables?.Count > 0)
                 {
-                    _logger.LogInformation("📊 Encontradas {TableCount} tablas", analyzeResult.Tables.Count);
+                    _logger.LogInformation("Encontradas {TableCount} tablas", analyzeResult.Tables.Count);
                     var tableData = ExtractTableData(analyzeResult.Tables);
                     foreach (var kvp in tableData)
                     {
@@ -511,11 +511,11 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                _logger.LogInformation("📋 Total campos extraídos: {Count}", extractedFields.Count);
+                _logger.LogInformation("Total campos extraídos: {Count}", extractedFields.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error extrayendo campos de Azure result");
+                _logger.LogError(ex, "Error extrayendo campos de Azure result");
             }
 
             return extractedFields;
@@ -529,7 +529,7 @@ namespace SegurosApp.API.Services
             {
                 foreach (var table in tables.Take(3)) 
                 {
-                    _logger.LogInformation("📊 Procesando tabla con {Rows} filas y {Cols} columnas",
+                    _logger.LogInformation("Procesando tabla con {Rows} filas y {Cols} columnas",
                         table.RowCount, table.ColumnCount);
 
                     for (int row = 0; row < table.RowCount && row < 10; row++) 
@@ -548,7 +548,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error extrayendo datos de tablas");
+                _logger.LogError(ex, "Error extrayendo datos de tablas");
             }
 
             return tableFields;
@@ -583,7 +583,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("⚠️ Error extrayendo valor del campo: {Error}", ex.Message);
+                _logger.LogWarning("Error extrayendo valor del campo: {Error}", ex.Message);
                 return field?.Content ?? string.Empty;
             }
         }
@@ -638,13 +638,13 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔄 Actualizando scan {ScanId} con info Velneo: {PolizaNumber}, Creado: {Created}",
+                _logger.LogInformation("Actualizando scan {ScanId} con info Velneo: {PolizaNumber}, Creado: {Created}",
                     scanId, velneoPolizaNumber, velneoCreated);
 
                 var scan = await _context.DocumentScans.FindAsync(scanId);
                 if (scan == null)
                 {
-                    _logger.LogWarning("⚠️ Scan {ScanId} no encontrado para actualizar con Velneo", scanId);
+                    _logger.LogWarning("Scan {ScanId} no encontrado para actualizar con Velneo", scanId);
                     return;
                 }
 
@@ -658,11 +658,11 @@ namespace SegurosApp.API.Services
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Scan {ScanId} actualizado con info Velneo exitosamente", scanId);
+                _logger.LogInformation("Scan {ScanId} actualizado con info Velneo exitosamente", scanId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error actualizando scan {ScanId} con info Velneo", scanId);
+                _logger.LogError(ex, "Error actualizando scan {ScanId} con info Velneo", scanId);
                 throw;
             }
         }
@@ -671,7 +671,7 @@ namespace SegurosApp.API.Services
         {
             try
             {
-                _logger.LogInformation("🔍 Obteniendo escaneos pendientes Velneo para usuario {UserId}", userId);
+                _logger.LogInformation("Obteniendo escaneos pendientes Velneo para usuario {UserId}", userId);
 
                 var pendingScans = await _context.DocumentScans
                     .Where(d => d.UserId == userId &&
@@ -684,12 +684,12 @@ namespace SegurosApp.API.Services
 
                 var result = pendingScans.Select(MapToHistoryDto).ToList();
 
-                _logger.LogInformation("✅ Encontrados {Count} escaneos pendientes para Velneo", result.Count);
+                _logger.LogInformation("Encontrados {Count} escaneos pendientes para Velneo", result.Count);
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo escaneos pendientes Velneo para usuario {UserId}", userId);
+                _logger.LogError(ex, "Error obteniendo escaneos pendientes Velneo para usuario {UserId}", userId);
                 return new List<DocumentHistoryDto>();
             }
         }
@@ -701,7 +701,7 @@ namespace SegurosApp.API.Services
                 fromDate ??= DateTime.UtcNow.AddDays(-30);
                 toDate ??= DateTime.UtcNow;
 
-                _logger.LogInformation("📊 Calculando métricas Velneo para usuario {UserId} desde {FromDate} hasta {ToDate}",
+                _logger.LogInformation("Calculando métricas Velneo para usuario {UserId} desde {FromDate} hasta {ToDate}",
                     userId, fromDate, toDate);
 
                 var scans = await _context.DocumentScans
@@ -740,14 +740,14 @@ namespace SegurosApp.API.Services
                     Quality = await CalculateQualityMetricsAsync(scans)
                 };
 
-                _logger.LogInformation("✅ Métricas Velneo calculadas: {TotalScans} scans, {VelneoSuccessRate:F1}% éxito Velneo",
+                _logger.LogInformation("Métricas Velneo calculadas: {TotalScans} scans, {VelneoSuccessRate:F1}% éxito Velneo",
                     metrics.TotalScans, metrics.VelneoSuccessRate);
 
                 return metrics;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error calculando métricas Velneo para usuario {UserId}", userId);
+                _logger.LogError(ex, "Error calculando métricas Velneo para usuario {UserId}", userId);
                 return new VelneoIntegrationMetricsDto
                 {
                     PeriodStart = fromDate ?? DateTime.UtcNow.AddDays(-30),
@@ -791,7 +791,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error calculando métricas diarias Velneo");
+                _logger.LogError(ex, "Error calculando métricas diarias Velneo");
                 return new List<DailyVelneoMetric>();
             }
         }
@@ -831,7 +831,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo documentos problemáticos Velneo");
+                _logger.LogError(ex, "Error obteniendo documentos problemáticos Velneo");
                 return new List<ProblematicVelneoDocumentDto>();
             }
         }
@@ -855,7 +855,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error calculando métricas de calidad");
+                _logger.LogError(ex, "Error calculando métricas de calidad");
                 return new QualityMetrics();
             }
         }
@@ -884,7 +884,7 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("⚠️ Error extrayendo número de póliza de datos guardados: {Error}", ex.Message);
+                _logger.LogWarning("Error extrayendo número de póliza de datos guardados: {Error}", ex.Message);
             }
 
             return "";

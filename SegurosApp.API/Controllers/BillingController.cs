@@ -31,14 +31,14 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📊 Usuario {UserId} consultando estadísticas del mes actual", userId);
+                _logger.LogInformation("Usuario {UserId} consultando estadísticas del mes actual", userId);
 
                 var stats = await _billingService.GetCurrentMonthStatsAsync();
                 return Ok(stats);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo estadísticas del mes actual");
+                _logger.LogError(ex, "Error obteniendo estadísticas del mes actual");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -50,14 +50,14 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📄 Usuario {UserId} consultando facturas de la empresa", userId);
+                _logger.LogInformation("Usuario {UserId} consultando facturas de la empresa", userId);
 
                 var bills = await _billingService.GetCompanyBillsAsync();
                 return Ok(bills);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo facturas de la empresa");
+                _logger.LogError(ex, "Error obteniendo facturas de la empresa");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -70,7 +70,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("🔄 Usuario {UserId} generando factura para {Month}/{Year}",
+                _logger.LogInformation("Usuario {UserId} generando factura para {Month}/{Year}",
                     userId, request.Month, request.Year);
 
                 // TODO: Agregar validación de rol admin cuando esté implementado
@@ -87,12 +87,12 @@ namespace SegurosApp.API.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning("⚠️ Error de validación generando factura: {Error}", ex.Message);
+                _logger.LogWarning("Error de validación generando factura: {Error}", ex.Message);
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando factura mensual");
+                _logger.LogError(ex, "Error generando factura mensual");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -105,7 +105,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("💳 Usuario {UserId} marcando factura {BillId} como pagada", userId, id);
+                _logger.LogInformation("Usuario {UserId} marcando factura {BillId} como pagada", userId, id);
 
                 // TODO: Agregar validación de rol admin cuando esté implementado
                 // if (!IsAdmin()) return Forbid();
@@ -121,7 +121,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error marcando factura {BillId} como pagada", id);
+                _logger.LogError(ex, "Error marcando factura {BillId} como pagada", id);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -137,7 +137,7 @@ namespace SegurosApp.API.Controllers
                 var now = DateTime.UtcNow;
                 var previousMonth = now.AddMonths(-1);
 
-                _logger.LogInformation("🔄 Usuario {UserId} generando factura automática para mes anterior: {Month}/{Year}",
+                _logger.LogInformation("Usuario {UserId} generando factura automática para mes anterior: {Month}/{Year}",
                     userId, previousMonth.Month, previousMonth.Year);
 
                 // TODO: Agregar validación de rol admin cuando esté implementado
@@ -154,12 +154,12 @@ namespace SegurosApp.API.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                _logger.LogWarning("⚠️ Error de validación generando factura del mes anterior: {Error}", ex.Message);
+                _logger.LogWarning("⚠Error de validación generando factura del mes anterior: {Error}", ex.Message);
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando factura del mes anterior");
+                _logger.LogError(ex, "Error generando factura del mes anterior");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -178,7 +178,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📄 Usuario {UserId} consultando detalle de factura {BillId}", userId, id);
+                _logger.LogInformation("Usuario {UserId} consultando detalle de factura {BillId}", userId, id);
 
                 var bill = await _billingService.GetBillDetailAsync(id);
 
@@ -191,7 +191,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo detalle de factura {BillId}", id);
+                _logger.LogError(ex, "Error obteniendo detalle de factura {BillId}", id);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -204,7 +204,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📄 Usuario {UserId} descargando PDF de factura {BillId}", userId, id);
+                _logger.LogInformation("Usuario {UserId} descargando PDF de factura {BillId}", userId, id);
 
                 var billDetail = await _billingService.GetBillDetailAsync(id);
 
@@ -216,7 +216,7 @@ namespace SegurosApp.API.Controllers
                 var pdfBytes = await _pdfService.GenerateInvoicePdfAsync(billDetail);
                 var fileName = $"Factura_{billDetail.Id:D6}_{billDetail.BillingPeriod.Replace("/", "-")}.pdf";
 
-                _logger.LogInformation("✅ PDF generado exitosamente para factura {BillId}, archivo: {FileName}",
+                _logger.LogInformation("PDF generado exitosamente para factura {BillId}, archivo: {FileName}",
                     id, fileName);
 
                 return File(
@@ -227,7 +227,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando PDF para factura {BillId}", id);
+                _logger.LogError(ex, "Error generando PDF para factura {BillId}", id);
                 return StatusCode(500, new { message = "Error interno del servidor generando PDF" });
             }
         }
@@ -240,7 +240,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📊 Usuario {UserId} consultando resumen mensual {Month}/{Year}", userId, month, year);
+                _logger.LogInformation("Usuario {UserId} consultando resumen mensual {Month}/{Year}", userId, month, year);
 
                 // TODO: Agregar validación de rol admin
                 // if (!IsAdmin()) return Forbid();
@@ -256,7 +256,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo resumen mensual {Month}/{Year}", month, year);
+                _logger.LogError(ex, "Error obteniendo resumen mensual {Month}/{Year}", month, year);
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
@@ -269,7 +269,7 @@ namespace SegurosApp.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("📈 Usuario {UserId} consultando analytics de ingresos últimos {Months} meses", userId, months);
+                _logger.LogInformation("Usuario {UserId} consultando analytics de ingresos últimos {Months} meses", userId, months);
 
                 // TODO: Agregar validación de rol admin
                 // if (!IsAdmin()) return Forbid();
@@ -279,7 +279,7 @@ namespace SegurosApp.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error obteniendo analytics de ingresos");
+                _logger.LogError(ex, "Error obteniendo analytics de ingresos");
                 return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }

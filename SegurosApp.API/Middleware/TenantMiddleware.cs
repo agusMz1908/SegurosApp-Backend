@@ -29,26 +29,26 @@ namespace SegurosApp.API.Middleware
                         tenantService.SetCurrentTenantUserId(userId);
                         context.Items["TenantUserId"] = userId;
 
-                        _logger.LogDebug("🏢 Tenant establecido - UserId: {UserId}, Path: {Path}",
+                        _logger.LogDebug("Tenant establecido - UserId: {UserId}, Path: {Path}",
                             userId, context.Request.Path);
                     }
                     else
                     {
-                        _logger.LogWarning("⚠️ UserId no encontrado en JWT claims. Path: {Path}, Claims: {Claims}",
+                        _logger.LogWarning("UserId no encontrado en JWT claims. Path: {Path}, Claims: {Claims}",
                             context.Request.Path,
                             string.Join(", ", context.User.Claims.Select(c => $"{c.Type}={c.Value}")));
                     }
                 }
                 else
                 {
-                    _logger.LogDebug("🔓 Usuario no autenticado - Path: {Path}", context.Request.Path);
+                    _logger.LogDebug("Usuario no autenticado - Path: {Path}", context.Request.Path);
                 }
 
                 await _next(context);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en TenantMiddleware para path: {Path}", context.Request.Path);
+                _logger.LogError(ex, "Error en TenantMiddleware para path: {Path}", context.Request.Path);
                 throw; 
             }
         }

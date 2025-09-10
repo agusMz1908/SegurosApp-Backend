@@ -94,14 +94,14 @@ namespace SegurosApp.API.Services
             int userId,
             CreatePolizaVelneoRequest? overrides = null)
         {
-            _logger.LogInformation("🚀 Creando request Velneo para scan {ScanId}, usuario {UserId}", scanId, userId);
+            _logger.LogInformation("Creando request Velneo para scan {ScanId}, usuario {UserId}", scanId, userId);
 
             var scan = await _context.DocumentScans
                 .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
 
             if (scan == null)
             {
-                _logger.LogError("❌ Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
+                _logger.LogError("Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
                 throw new ArgumentException($"Scan {scanId} no encontrado para usuario {userId}");
             }
 
@@ -129,26 +129,17 @@ namespace SegurosApp.API.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("⚠️ Error obteniendo información de maestros: {Error}", ex.Message);
+                _logger.LogWarning("Error obteniendo información de maestros: {Error}", ex.Message);
             }
 
             var rawStartDate = ExtractStartDate(normalizedData);
             var rawEndDate = ExtractEndDate(normalizedData);
             var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
             var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
-
-            _logger.LogInformation("🔍 DEBUG: Extrayendo montos y cuotas directamente...");
-
             var extractedPremium = ExtractPremium(normalizedData);
             var extractedTotal = ExtractTotalAmount(normalizedData);
             var extractedCuotas = ExtractInstallmentCount(normalizedData);
             var extractedPaymentMethod = ExtractPaymentMethod(normalizedData);
-
-            _logger.LogInformation("💰 DEBUG EXTRAÍDOS DIRECTAMENTE:");
-            _logger.LogInformation("  - Premio extraído: {Premium}", extractedPremium);
-            _logger.LogInformation("  - Total extraído: {Total}", extractedTotal);
-            _logger.LogInformation("  - Cuotas extraídas: {Cuotas}", extractedCuotas);
-            _logger.LogInformation("  - Forma de pago extraída: '{PaymentMethod}'", extractedPaymentMethod);
 
             var request = new VelneoPolizaRequest
             {
@@ -202,12 +193,11 @@ namespace SegurosApp.API.Services
         private string ExtractVehiclePlate(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "vehiculo.matricula", "matricula", "MATRICULA", "placa", "patente"
-    };
+                "vehiculo.matricula", "matricula", "MATRICULA", "placa", "patente"
+            };
 
             var value = GetFirstValidValue(data, possibleFields);
 
-            // Si es solo "PATENTE" o similar, intentar encontrar la patente real
             if (string.Equals(value, "PATENTE", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(value, "MATRICULA", StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrEmpty(value))
@@ -275,12 +265,12 @@ namespace SegurosApp.API.Services
         {
             if (overrideValue.HasValue && overrideValue.Value > 0)
             {
-                _logger.LogDebug("🔧 Usando override para {FieldName}: {Value}", fieldName, overrideValue.Value);
+                _logger.LogDebug("Usando override para {FieldName}: {Value}", fieldName, overrideValue.Value);
                 return overrideValue.Value;
             }
 
             var result = dbValue ?? 0;
-            _logger.LogDebug("🔧 Usando BD para {FieldName}: {Value}", fieldName, result);
+            _logger.LogDebug("Usando BD para {FieldName}: {Value}", fieldName, result);
             return result;
         }
 
@@ -364,11 +354,11 @@ namespace SegurosApp.API.Services
                 overrideValue != "string" &&
                 overrideValue.Trim() != "string")
             {
-                _logger.LogDebug("🔧 Usando override para {FieldName}: '{Value}'", fieldName, overrideValue);
+                _logger.LogDebug("Usando override para {FieldName}: '{Value}'", fieldName, overrideValue);
                 return overrideValue.Trim();
             }
 
-            _logger.LogDebug("🔧 Usando valor por defecto para {FieldName}: '{Value}'", fieldName, defaultValue);
+            _logger.LogDebug("Usando valor por defecto para {FieldName}: '{Value}'", fieldName, defaultValue);
             return defaultValue;
         }
 
@@ -382,12 +372,12 @@ namespace SegurosApp.API.Services
             {
                 switch (companiaId.Value)
                 {
-                    case 3: // MAPFRE
+                    case 3:
                         _logger.LogInformation("Normalizando campos de MAPFRE (companiaId=3) a formato BSE");
                         NormalizeMapfreFields(normalized);
                         break;
 
-                    case 4: // SURA 
+                    case 4: 
                         _logger.LogInformation("Normalizando campos de SURA (companiaId=4) a formato BSE");
                         NormalizeSuraFields(normalized);
                         break;
@@ -408,17 +398,10 @@ namespace SegurosApp.API.Services
         private void NormalizeMapfreFields(Dictionary<string, object> data)
         {
             _logger.LogDebug("Iniciando normalización de campos MAPFRE");
-
-            // Normalizar cuotas de MAPFRE - corregir el mapeo de cuotas
             NormalizeMapfreCuotas(data);
-
-            // Normalizar patente - extraer solo el número
             NormalizeMapfrePatente(data);
-
-            // Normalizar valores monetarios
             NormalizeMapfreMontos(data);
 
-            // Resto de normalizaciones existentes
             for (int i = 1; i <= 12; i++)
             {
                 var bseIndex = i - 1;
@@ -449,10 +432,9 @@ namespace SegurosApp.API.Services
 
         private void NormalizeMapfreCuotas(Dictionary<string, object> data)
         {
-            // Buscar el número real de cuotas en MAPFRE
             var possibleCuotasFields = new[] {
-        "pago.modo_facturacion", "cantidadCuotas", "cantidad_cuotas", "cuotas", "concuo"
-    };
+                "pago.modo_facturacion", "cantidadCuotas", "cantidad_cuotas", "cuotas", "concuo"
+            };
 
             int realCuotas = 1;
             foreach (var field in possibleCuotasFields)
@@ -470,7 +452,6 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            // Contar cuotas reales basado en los campos pago.cuota_monto[X] existentes
             int cuotasContadas = 0;
             for (int i = 1; i <= 12; i++)
             {
@@ -489,7 +470,6 @@ namespace SegurosApp.API.Services
                 realCuotas = Math.Max(realCuotas, cuotasContadas);
             }
 
-            // Actualizar el campo de cantidad de cuotas
             data["pago.cantidad_cuotas"] = realCuotas.ToString();
             data["cantidadCuotas"] = realCuotas;
 
@@ -506,32 +486,29 @@ namespace SegurosApp.API.Services
                 {
                     var value = data[field].ToString();
 
-                    // Si el valor es simplemente "PATENTE", buscar en otros campos
                     if (string.Equals(value, "PATENTE", StringComparison.OrdinalIgnoreCase))
                     {
-                        _logger.LogWarning("⚠️ MAPFRE - Campo {Field} contiene solo 'PATENTE', buscando valor real", field);
+                        _logger.LogWarning("MAPFRE - Campo {Field} contiene solo 'PATENTE', buscando valor real", field);
 
-                        // Buscar la patente real en otros campos del documento
                         var realPatente = FindRealPatenteInData(data);
                         if (!string.IsNullOrEmpty(realPatente))
                         {
                             data[field] = realPatente;
-                            _logger.LogInformation("✅ MAPFRE - Patente corregida: {Patente}", realPatente);
+                            _logger.LogInformation("MAPFRE - Patente corregida: {Patente}", realPatente);
                         }
                         else
                         {
-                            data[field] = ""; // Limpiar el campo si no se encuentra valor real
-                            _logger.LogWarning("⚠️ MAPFRE - No se encontró patente real, limpiando campo");
+                            data[field] = ""; 
+                            _logger.LogWarning("⚠MAPFRE - No se encontró patente real, limpiando campo");
                         }
                     }
                     else
                     {
-                        // Limpiar formato de patente existente
                         var cleanPatente = CleanPatenteValue(value);
                         if (cleanPatente != value)
                         {
                             data[field] = cleanPatente;
-                            _logger.LogInformation("✅ MAPFRE - Patente limpiada: '{Original}' -> '{Clean}'", value, cleanPatente);
+                            _logger.LogInformation("MAPFRE - Patente limpiada: '{Original}' -> '{Clean}'", value, cleanPatente);
                         }
                     }
                 }
@@ -540,30 +517,28 @@ namespace SegurosApp.API.Services
 
         private string FindRealPatenteInData(Dictionary<string, object> data)
         {
-            // Patrones de matrícula más amplios
             var uruguayanPlatePatterns = new[]
             {
-        @"\b[A-Z]{3}\s*\d{4}\b",           // AAA 1234 o AAA1234
-        @"\b[A-Z]{2}\s*\d{4,6}\b",         // AA 123456 o AA123456  
-        @"\b[A-Z]{3}-\d{4}\b",             // AAA-1234
-        @"\b[A-Z]{2}-\d{4,6}\b",           // AA-123456
-        @"\b[A-Z]{1,3}\s*\d{3,6}\b"        // Patrones más flexibles
-    };
+                @"\b[A-Z]{3}\s*\d{4}\b",         
+                @"\b[A-Z]{2}\s*\d{4,6}\b",        
+                @"\b[A-Z]{3}-\d{4}\b",             
+                @"\b[A-Z]{2}-\d{4,6}\b",           
+                @"\b[A-Z]{1,3}\s*\d{3,6}\b"        
+            };
 
-            _logger.LogInformation("🔍 Buscando patente real en {CampoCount} campos de datos", data.Count);
+            _logger.LogInformation("Buscando patente real en {CampoCount} campos de datos", data.Count);
 
-            // Primero buscar en campos que no sean el problemático
             foreach (var kvp in data)
             {
                 if (kvp.Key.ToLower().Contains("matricula") ||
                     kvp.Key.ToLower().Contains("patente") ||
                     kvp.Key.ToLower().Contains("placa"))
                 {
-                    continue; // Saltar los campos problemáticos conocidos
+                    continue; 
                 }
 
                 var value = kvp.Value?.ToString() ?? "";
-                if (value.Length < 6 || value.Length > 50) continue; // Optimización
+                if (value.Length < 6 || value.Length > 50) continue; 
 
                 foreach (var pattern in uruguayanPlatePatterns)
                 {
@@ -573,7 +548,7 @@ namespace SegurosApp.API.Services
                         var candidate = match.Value.Replace(" ", "").Replace("-", "").ToUpper();
                         if (IsValidPatente(candidate))
                         {
-                            _logger.LogInformation("✅ Patente encontrada en campo '{Campo}': '{Patente}' (valor original: '{Valor}')",
+                            _logger.LogInformation("Patente encontrada en campo '{Campo}': '{Patente}' (valor original: '{Valor}')",
                                 kvp.Key, candidate, value);
                             return candidate;
                         }
@@ -581,7 +556,6 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            // Si no se encuentra en otros campos, buscar en todos los campos incluso los problemáticos
             foreach (var kvp in data)
             {
                 var value = kvp.Value?.ToString() ?? "";
@@ -595,7 +569,7 @@ namespace SegurosApp.API.Services
                         var candidate = match.Value.Replace(" ", "").Replace("-", "").ToUpper();
                         if (IsValidPatente(candidate))
                         {
-                            _logger.LogInformation("✅ Patente encontrada (segunda pasada) en campo '{Campo}': '{Patente}'",
+                            _logger.LogInformation("Patente encontrada (segunda pasada) en campo '{Campo}': '{Patente}'",
                                 kvp.Key, candidate);
                             return candidate;
                         }
@@ -603,7 +577,6 @@ namespace SegurosApp.API.Services
                 }
             }
 
-            // Búsqueda más agresiva: buscar cualquier combinación de letras y números
             foreach (var kvp in data)
             {
                 var value = kvp.Value?.ToString() ?? "";
@@ -614,14 +587,14 @@ namespace SegurosApp.API.Services
                     var candidate = match.Value.Replace(" ", "").ToUpper();
                     if (IsValidPatente(candidate))
                     {
-                        _logger.LogInformation("✅ Patente encontrada (búsqueda agresiva) en campo '{Campo}': '{Patente}'",
+                        _logger.LogInformation("Patente encontrada (búsqueda agresiva) en campo '{Campo}': '{Patente}'",
                             kvp.Key, candidate);
                         return candidate;
                     }
                 }
             }
 
-            _logger.LogWarning("⚠️ No se encontró ninguna patente válida en los datos");
+            _logger.LogWarning("No se encontró ninguna patente válida en los datos");
             return "";
         }
 
@@ -629,11 +602,9 @@ namespace SegurosApp.API.Services
         {
             if (string.IsNullOrEmpty(patente)) return false;
 
-            // Descartar valores que claramente no son patentes
             var invalidValues = new[] { "PATENTE", "MATRICULA", "PLACA", "VEHICULO", "AUTO", "COCHE" };
             if (invalidValues.Contains(patente.ToUpper())) return false;
 
-            // Verificar formato básico: al menos 2 letras y 3 números
             var letterCount = patente.Count(char.IsLetter);
             var digitCount = patente.Count(char.IsDigit);
 
@@ -649,43 +620,38 @@ namespace SegurosApp.API.Services
         {
             if (string.IsNullOrWhiteSpace(value)) return "";
 
-            _logger.LogDebug("🔧 Limpiando valor de patente: '{Value}'", value);
-
-            // Remover saltos de línea y espacios extra
+            _logger.LogDebug("Limpiando valor de patente: '{Value}'", value);
             var cleaned = value.Replace("\n", " ").Replace("\r", " ").Trim();
 
-            // Remover prefijos comunes (incluyendo con y sin dos puntos)
             var prefixesToRemove = new[] {
-        "MATRÍCULA:", "MATRICULA:", "PATENTE:", "PLACA:",
-        "MATRÍCULA", "MATRICULA", "PATENTE", "PLACA"
-    };
+                "MATRÍCULA:", "MATRICULA:", "PATENTE:", "PLACA:",
+                "MATRÍCULA", "MATRICULA", "PATENTE", "PLACA"
+            };
 
             foreach (var prefix in prefixesToRemove)
             {
                 if (cleaned.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 {
                     cleaned = cleaned.Substring(prefix.Length).Trim();
-                    _logger.LogDebug("🔧 Removido prefijo '{Prefix}', resultado: '{Cleaned}'", prefix, cleaned);
+                    _logger.LogDebug("Removido prefijo '{Prefix}', resultado: '{Cleaned}'", prefix, cleaned);
                     break;
                 }
             }
 
-            // Si después de limpiar queda solo una palabra genérica, devolver vacío
             var genericWords = new[] { "PATENTE", "MATRICULA", "MATRÍCULA", "PLACA", "VEHICULO", "AUTO", "COCHE" };
             if (genericWords.Any(word => string.Equals(cleaned, word, StringComparison.OrdinalIgnoreCase)))
             {
-                _logger.LogDebug("⚠️ Valor limpiado es palabra genérica: '{Cleaned}', devolviendo vacío", cleaned);
+                _logger.LogDebug("Valor limpiado es palabra genérica: '{Cleaned}', devolviendo vacío", cleaned);
                 return "";
             }
 
-            // Buscar patrón de patente usando regex
             var patentePatterns = new[]
             {
-        @"[A-Z]{3}\s*\d{4}",     // AAA 1234 o AAA1234
-        @"[A-Z]{2}\s*\d{4,6}",   // AA 123456 o AA123456
-        @"[A-Z]{3}-\d{4}",       // AAA-1234
-        @"[A-Z]{2}-\d{4,6}"      // AA-123456
-    };
+                @"[A-Z]{3}\s*\d{4}",     
+                @"[A-Z]{2}\s*\d{4,6}",   
+                @"[A-Z]{3}-\d{4}",      
+                @"[A-Z]{2}-\d{4,6}"    
+            };
 
             foreach (var pattern in patentePatterns)
             {
@@ -693,26 +659,24 @@ namespace SegurosApp.API.Services
                 if (match.Success)
                 {
                     var patente = match.Value.Replace(" ", "").Replace("-", "").ToUpper();
-                    _logger.LogDebug("✅ Patente encontrada con patrón '{Pattern}': '{Patente}'", pattern, patente);
+                    _logger.LogDebug("Patente encontrada con patrón '{Pattern}': '{Patente}'", pattern, patente);
                     return patente;
                 }
             }
 
-            // Si no coincide con patrones específicos pero tiene formato válido, devolverla
             if (IsValidPatente(cleaned))
             {
                 var normalizedPatente = cleaned.Replace(" ", "").Replace("-", "").ToUpper();
-                _logger.LogDebug("✅ Patente válida después de limpieza: '{Patente}'", normalizedPatente);
+                _logger.LogDebug("Patente válida después de limpieza: '{Patente}'", normalizedPatente);
                 return normalizedPatente;
             }
 
-            _logger.LogDebug("⚠️ No se pudo extraer patente válida de: '{Value}'", value);
+            _logger.LogDebug("No se pudo extraer patente válida de: '{Value}'", value);
             return "";
         }
 
         private void NormalizeMapfreMontos(Dictionary<string, object> data)
         {
-            // Calcular el valor de cuota real basado en el total y la cantidad de cuotas
             if (data.ContainsKey("financiero.premio_total") && data.ContainsKey("cantidadCuotas"))
             {
                 var totalAmount = ExtractAmountFromString(data["financiero.premio_total"].ToString());
@@ -722,7 +686,7 @@ namespace SegurosApp.API.Services
                 {
                     var valorCuota = totalAmount / cantidadCuotas;
                     data["pago.valor_cuota"] = valorCuota.ToString("F2");
-                    _logger.LogInformation("✅ MAPFRE - Valor cuota calculado: ${ValorCuota} (Total: ${Total} / {Cuotas} cuotas)",
+                    _logger.LogInformation("MAPFRE - Valor cuota calculado: ${ValorCuota} (Total: ${Total} / {Cuotas} cuotas)",
                         valorCuota, totalAmount, cantidadCuotas);
                 }
             }
@@ -731,17 +695,10 @@ namespace SegurosApp.API.Services
         private void NormalizeSuraFields(Dictionary<string, object> data)
         {
             _logger.LogDebug("Iniciando normalización de campos SURA");
-
-            // Normalizar cuotas de SURA
             NormalizeSuraCuotas(data);
-
-            // Normalizar patente de SURA
             NormalizeSuraPatente(data);
-
-            // Normalizar montos de SURA
             NormalizeSuraMontos(data);
 
-            // Normalización existente
             if (data.ContainsKey("datos_financiero") && !data.ContainsKey("financiero.premio_total"))
             {
                 data["financiero.premio_total"] = data["datos_financiero"];
@@ -750,11 +707,10 @@ namespace SegurosApp.API.Services
 
         private void NormalizeSuraCuotas(Dictionary<string, object> data)
         {
-            // Implementar lógica similar a MAPFRE para SURA
             var possibleCuotasFields = new[] {
-        "pago.modo_facturacion", "cantidadCuotas", "cantidad_cuotas", "cuotas", "concuo",
-        "forma_pago", "modalidad_pago"
-    };
+                "pago.modo_facturacion", "cantidadCuotas", "cantidad_cuotas", "cuotas", "concuo",
+                "forma_pago", "modalidad_pago"
+            };
 
             int realCuotas = 1;
             foreach (var field in possibleCuotasFields)
@@ -766,7 +722,7 @@ namespace SegurosApp.API.Services
                     if (match.Success && int.TryParse(match.Groups[1].Value, out var cuotas) && cuotas > 0)
                     {
                         realCuotas = cuotas;
-                        _logger.LogInformation("🎯 SURA - Cuotas encontradas: {Cuotas}", realCuotas);
+                        _logger.LogInformation("SURA - Cuotas encontradas: {Cuotas}", realCuotas);
                         break;
                     }
                 }
@@ -774,45 +730,41 @@ namespace SegurosApp.API.Services
 
             data["pago.cantidad_cuotas"] = realCuotas.ToString();
             data["cantidadCuotas"] = realCuotas;
-
-            _logger.LogInformation("✅ SURA - Cuotas normalizadas: {Cuotas}", realCuotas);
+            _logger.LogInformation("SURA - Cuotas normalizadas: {Cuotas}", realCuotas);
         }
 
         private void NormalizeSuraPatente(Dictionary<string, object> data)
         {
-            // Aplicar la misma lógica que MAPFRE
             NormalizeMapfrePatente(data);
         }
 
         private void NormalizeSuraMontos(Dictionary<string, object> data)
         {
-            // Aplicar la misma lógica que MAPFRE para calcular valor de cuota
             NormalizeMapfreMontos(data);
         }
 
         private int ExtractInstallmentCount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "pago.cantidad_cuotas",      // Campo normalizado
-        "cantidadCuotas",           // Campo normalizado  
-        "pago.modo_facturacion",
-        "cantidad_cuotas",
-        "cuotas",
-        "concuo"
-    };
+                "pago.cantidad_cuotas",      
+                "cantidadCuotas",            
+                "pago.modo_facturacion",
+                "cantidad_cuotas",
+                "cuotas",
+                "concuo"
+            };
 
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    _logger.LogInformation("🎯 ExtractInstallmentCount - Campo encontrado: '{Field}' = '{Value}'", field, value);
+                    _logger.LogInformation("ExtractInstallmentCount - Campo encontrado: '{Field}' = '{Value}'", field, value);
 
-                    // Si es un campo ya normalizado (numérico directo)
                     if (field == "cantidadCuotas" || field == "pago.cantidad_cuotas")
                     {
                         if (int.TryParse(value, out var directCuotas) && directCuotas > 0)
                         {
-                            _logger.LogInformation("✅ ExtractInstallmentCount - Cuotas desde campo normalizado: {Count}", directCuotas);
+                            _logger.LogInformation("ExtractInstallmentCount - Cuotas desde campo normalizado: {Count}", directCuotas);
                             return directCuotas;
                         }
                     }
@@ -820,39 +772,39 @@ namespace SegurosApp.API.Services
                     var match = Regex.Match(value, @"(\d+)\s*cuotas?", RegexOptions.IgnoreCase);
                     if (match.Success && int.TryParse(match.Groups[1].Value, out var cuotas) && cuotas > 0)
                     {
-                        _logger.LogInformation("✅ ExtractInstallmentCount - Cuotas extraídas: {Count} desde campo '{Field}'", cuotas, field);
+                        _logger.LogInformation("ExtractInstallmentCount - Cuotas extraídas: {Count} desde campo '{Field}'", cuotas, field);
                         return cuotas;
                     }
 
                     var numberMatch = Regex.Match(value, @"(\d+)");
                     if (numberMatch.Success && int.TryParse(numberMatch.Groups[1].Value, out var number) && number > 0 && number <= 60)
                     {
-                        _logger.LogInformation("✅ ExtractInstallmentCount - Número extraído: {Count} desde campo '{Field}'", number, field);
+                        _logger.LogInformation("ExtractInstallmentCount - Número extraído: {Count} desde campo '{Field}'", number, field);
                         return number;
                     }
                 }
             }
 
-            _logger.LogWarning("⚠️ ExtractInstallmentCount - No se encontró número de cuotas, usando valor por defecto: 1");
+            _logger.LogWarning("ExtractInstallmentCount - No se encontró número de cuotas, usando valor por defecto: 1");
             return 1;
         }
 
         private decimal ExtractTotalAmount(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-        "financiero.premio_total",
-        "datos_financiero",
-        "premio_total",
-        "contot",
-        "total",
-        "PREMIO TOTAL A PAGAR"
-    };
+                "financiero.premio_total",
+                "datos_financiero",
+                "premio_total",
+                "contot",
+                "total",
+                "PREMIO TOTAL A PAGAR"
+            };
 
             foreach (var field in possibleFields)
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    _logger.LogInformation("🎯 ExtractTotalAmount - Campo encontrado: '{Field}' = '{Value}'", field, value);
+                    _logger.LogInformation("ExtractTotalAmount - Campo encontrado: '{Field}' = '{Value}'", field, value);
 
                     if (field == "datos_financiero" && value.Contains("Premio Total a Pagar"))
                     {
@@ -862,7 +814,7 @@ namespace SegurosApp.API.Services
                             var amount = ExtractAmountFromString(match.Groups[1].Value);
                             if (amount > 0)
                             {
-                                _logger.LogInformation("✅ ExtractTotalAmount - Total extraído: {Amount} desde datos_financiero", amount);
+                                _logger.LogInformation("ExtractTotalAmount - Total extraído: {Amount} desde datos_financiero", amount);
                                 return amount;
                             }
                         }
@@ -872,14 +824,14 @@ namespace SegurosApp.API.Services
                         var amount = ExtractAmountFromString(value);
                         if (amount > 0)
                         {
-                            _logger.LogInformation("✅ ExtractTotalAmount - Total extraído: {Amount} desde campo '{Field}'", amount, field);
+                            _logger.LogInformation("ExtractTotalAmount - Total extraído: {Amount} desde campo '{Field}'", amount, field);
                             return amount;
                         }
                     }
                 }
             }
 
-            _logger.LogWarning("⚠️ ExtractTotalAmount - No se encontró valor total en ningún campo");
+            _logger.LogWarning("ExtractTotalAmount - No se encontró valor total en ningún campo");
             return 0;
         }
 
@@ -889,12 +841,12 @@ namespace SegurosApp.API.Services
 
         private string ConvertToVelneoDateFormat(string dateStr)
         {
-            _logger.LogDebug("🔧 ConvertToVelneoDateFormat input: '{DateStr}'", dateStr);
+            _logger.LogDebug("ConvertToVelneoDateFormat input: '{DateStr}'", dateStr);
 
             if (string.IsNullOrEmpty(dateStr))
             {
                 var today = DateTime.Today.ToString("yyyy-MM-dd");
-                _logger.LogWarning("⚠️ Fecha vacía, usando hoy: {Today}", today);
+                _logger.LogWarning("Fecha vacía, usando hoy: {Today}", today);
                 return today;
             }
 
@@ -903,30 +855,30 @@ namespace SegurosApp.API.Services
                 var cleanDate = dateStr.Trim();
                 if (DateTime.TryParseExact(cleanDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var alreadyFormatted))
                 {
-                    _logger.LogDebug("✅ Fecha ya en formato correcto: {Date}", cleanDate);
+                    _logger.LogDebug("Fecha ya en formato correcto: {Date}", cleanDate);
                     return cleanDate;
                 }
 
                 var formats = new[]
                 {
-            "dd/MM/yyyy",
-            "MM/dd/yyyy",
-            "dd-MM-yyyy",
-            "yyyy/MM/dd",
-            "dd/MM/yy",
-            "MM/dd/yy",
-            "yyyyMMdd",
-            "dd.MM.yyyy",
-            "yyyy-M-d",
-            "d/M/yyyy"
-        };
+                    "dd/MM/yyyy",
+                    "MM/dd/yyyy",
+                    "dd-MM-yyyy",
+                    "yyyy/MM/dd",
+                    "dd/MM/yy",
+                    "MM/dd/yy",
+                    "yyyyMMdd",
+                    "dd.MM.yyyy",
+                    "yyyy-M-d",
+                    "d/M/yyyy"
+                };
 
                 foreach (var format in formats)
                 {
                     if (DateTime.TryParseExact(cleanDate, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
                     {
                         var result = parsedDate.ToString("yyyy-MM-dd");
-                        _logger.LogDebug("✅ Fecha convertida de '{Format}': {Input} -> {Output}", format, cleanDate, result);
+                        _logger.LogDebug("Fecha convertida de '{Format}': {Input} -> {Output}", format, cleanDate, result);
                         return result;
                     }
                 }
@@ -934,7 +886,7 @@ namespace SegurosApp.API.Services
                 if (DateTime.TryParse(cleanDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var flexibleDate))
                 {
                     var result = flexibleDate.ToString("yyyy-MM-dd");
-                    _logger.LogDebug("✅ Fecha parseada flexible: {Input} -> {Output}", cleanDate, result);
+                    _logger.LogDebug("Fecha parseada flexible: {Input} -> {Output}", cleanDate, result);
                     return result;
                 }
 
@@ -959,20 +911,20 @@ namespace SegurosApp.API.Services
                     {
                         var extractedDate = new DateTime(year, month, day);
                         var result = extractedDate.ToString("yyyy-MM-dd");
-                        _logger.LogDebug("✅ Fecha extraída por números: {Input} -> {Output}", cleanDate, result);
+                        _logger.LogDebug("Fecha extraída por números: {Input} -> {Output}", cleanDate, result);
                         return result;
                     }
                 }
 
-                _logger.LogError("❌ No se pudo parsear fecha: '{DateStr}'", dateStr);
+                _logger.LogError("No se pudo parsear fecha: '{DateStr}'", dateStr);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error parseando fecha '{DateStr}'", dateStr);
+                _logger.LogError(ex, "Error parseando fecha '{DateStr}'", dateStr);
             }
 
             var fallback = DateTime.Today.ToString("yyyy-MM-dd");
-            _logger.LogWarning("⚠️ Usando fecha fallback: {Fallback}", fallback);
+            _logger.LogWarning("Usando fecha fallback: {Fallback}", fallback);
             return fallback;
         }
 
@@ -1123,11 +1075,11 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                _logger.LogInformation("💡 Generadas {Count} sugerencias automáticas", suggestions.Count);
+                _logger.LogInformation("Generadas {Count} sugerencias automáticas", suggestions.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error generando sugerencias automáticas");
+                _logger.LogError(ex, "Error generando sugerencias automáticas");
             }
 
             return suggestions;
@@ -1622,17 +1574,17 @@ namespace SegurosApp.API.Services
             {
                 if (TryGetValue(data, field, out var value))
                 {
-                    _logger.LogInformation("🎯 ExtractPremium - Campo encontrado: '{Field}' = '{Value}'", field, value);
+                    _logger.LogInformation("ExtractPremium - Campo encontrado: '{Field}' = '{Value}'", field, value);
                     var amount = ExtractAmountFromString(value);
                     if (amount > 0)
                     {
-                        _logger.LogInformation("✅ ExtractPremium - Premio extraído: {Amount} desde campo '{Field}'", amount, field);
+                        _logger.LogInformation("ExtractPremium - Premio extraído: {Amount} desde campo '{Field}'", amount, field);
                         return amount;
                     }
                 }
             }
 
-            _logger.LogWarning("⚠️ ExtractPremium - No se encontró valor de premio en ningún campo");
+            _logger.LogWarning("ExtractPremium - No se encontró valor de premio en ningún campo");
             return 0;
         }
 
@@ -1665,7 +1617,7 @@ namespace SegurosApp.API.Services
 
                     if (decimal.TryParse(uruguayanNumber, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
                     {
-                        _logger.LogInformation("✅ Monto extraído (formato uruguayo): '{Input}' -> {Amount}", value, amount);
+                        _logger.LogInformation("Monto extraído (formato uruguayo): '{Input}' -> {Amount}", value, amount);
                         return amount;
                     }
                 }
@@ -1677,7 +1629,7 @@ namespace SegurosApp.API.Services
 
                     if (decimal.TryParse(standardNumber, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
                     {
-                        _logger.LogInformation("✅ Monto extraído (formato estándar): '{Input}' -> {Amount}", value, amount);
+                        _logger.LogInformation("Monto extraído (formato estándar): '{Input}' -> {Amount}", value, amount);
                         return amount;
                     }
                 }
@@ -1689,17 +1641,17 @@ namespace SegurosApp.API.Services
 
                     if (decimal.TryParse(numberStr, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount))
                     {
-                        _logger.LogInformation("✅ Monto extraído (número simple): '{Input}' -> {Amount}", value, amount);
+                        _logger.LogInformation("Monto extraído (número simple): '{Input}' -> {Amount}", value, amount);
                         return amount;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("⚠️ Error extrayendo monto de '{Value}': {Error}", value, ex.Message);
+                _logger.LogWarning("Error extrayendo monto de '{Value}': {Error}", value, ex.Message);
             }
 
-            _logger.LogWarning("⚠️ No se pudo extraer monto de: '{Value}'", value);
+            _logger.LogWarning("No se pudo extraer monto de: '{Value}'", value);
             return 0;
         }
 
@@ -1953,7 +1905,7 @@ namespace SegurosApp.API.Services
                 throw new ValidationException($"Errores de validación: {string.Join(", ", errors)}");
             }
 
-            _logger.LogInformation("✅ Request Velneo validado exitosamente");
+            _logger.LogInformation("Request Velneo validado exitosamente");
         }
 
         #endregion
@@ -2059,7 +2011,7 @@ namespace SegurosApp.API.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning("⚠️ Error parseando fecha {Text}: {Error}", text, ex.Message);
+                        _logger.LogWarning("Error parseando fecha {Text}: {Error}", text, ex.Message);
                     }
                 }
             }
