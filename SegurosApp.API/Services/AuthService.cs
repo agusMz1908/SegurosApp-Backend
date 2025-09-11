@@ -111,6 +111,30 @@ namespace SegurosApp.API.Services
             }
         }
 
+        public async Task<ApiResponse> LogoutAsync(int userId)
+        {
+            try
+            {
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return ApiResponse.ErrorResult("Usuario no encontrado");
+                }
+
+                user.LastLogoutAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Logout exitoso para usuario ID: {UserId}", userId);
+
+                return ApiResponse.SuccessResult("Logout exitoso");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error durante logout para usuario ID: {UserId}", userId);
+                return ApiResponse.ErrorResult("Error interno del servidor");
+            }
+        }
+
         public async Task<ApiResponse<UserDto>> RegisterAsync(RegisterRequest request)
         {
             try

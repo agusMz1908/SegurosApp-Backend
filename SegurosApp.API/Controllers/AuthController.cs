@@ -84,6 +84,44 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+        [HttpPost("logout")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse), 200)]
+        [ProducesResponseType(401)]
+        public async Task<ActionResult<ApiResponse>> Logout()
+        {
+            try
+            {
+                // Intentar múltiples formas de obtener el userId
+                var userIdClaim = User.FindFirst("id")?.Value ??
+                                 User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
+                                 User.FindFirst("sub")?.Value ??
+                                 User.FindFirst("userId")?.Value;
+
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                {
+                    _logger.LogWarning("No se pudo obtener userId del token. Claims disponibles: {Claims}",
+                        string.Join(", ", User.Claims.Select(c => $"{c.Type}:{c.Value}")));
+
+                    return Unauthorized(ApiResponse.ErrorResult("Token inválido"));
+                }
+
+                var result = await _authService.LogoutAsync(userId);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error en logout");
+                return StatusCode(500, ApiResponse.ErrorResult("Error interno del servidor"));
+            }
+        }
+
         [HttpGet("me")]
         [Authorize]
         [ProducesResponseType(typeof(ApiResponse<UserDto>), 200)]

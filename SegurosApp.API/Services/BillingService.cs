@@ -21,6 +21,254 @@ namespace SegurosApp.API.Services
             _logger = logger;
         }
 
+        public async Task<BillingItems?> AddToCurrentMonthBillingAsync(int scanId, int userId)
+        {
+            try
+            {
+                _logger.LogInformation("Agregando scan {ScanId} a factura mensual", scanId);
+
+                var scan = await _context.DocumentScans
+                    .FirstOrDefaultAsync(s => s.Id == scanId &&
+                                            s.UserId == userId &&
+                                            s.VelneoCreated &&
+                                            s.IsBillable &&
+                                            !s.IsBilled);
+
+                if (scan == null) return null;
+
+                var existingBilling = await _context.BillingItems
+                    .FirstOrDefaultAsync(bi => bi.DocumentScanId == scanId);
+                if (existingBilling != null) return existingBilling;
+
+                var monthlyBill = await GetOrCreateMonthlyBillAsync(scan.CreatedAt.Year, scan.CreatedAt.Month, userId);
+                var tier = await _pricingService.GetApplicableTierAsync(1); 
+
+                var billingItem = new BillingItems
+                {
+                    MonthlyBillingId = monthlyBill.Id,
+                    DocumentScanId = scan.Id,
+                    ScanDate = scan.CreatedAt,
+                    FileName = scan.FileName,
+                    VelneoPolizaNumber = scan.VelneoPolizaNumber,
+                    PricePerPoliza = tier.PricePerPoliza,
+                    Amount = tier.PricePerPoliza,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.BillingItems.Add(billingItem);
+                scan.IsBilled = true;
+                scan.BilledAt = DateTime.UtcNow;
+
+                await UpdateMonthlyBillTotalsAsync(monthlyBill);
+                await _context.SaveChangesAsync();
+                _ = Task.Run(async () => await CheckAndClosePreviousMonthAsync());
+
+                return billingItem;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error agregando scan {ScanId}", scanId);
+                throw;
+            }
+        }
+
+        public async Task<List<MonthlyBillingDto>> GetPendingBillsForMonthAsync(int year, int month)
+        {
+            try
+            {
+                var bills = await _context.MonthlyBilling
+                    .Include(mb => mb.AppliedTier)
+                    .Include(mb => mb.BillingItems)
+                    .Where(mb => mb.BillingYear == year &&
+                                mb.BillingMonth == month &&
+                                mb.Status == "Pending")
+                    .ToListAsync();
+
+                return bills.Select(bill => new MonthlyBillingDto
+                {
+                    Id = bill.Id,
+                    BillingYear = bill.BillingYear,
+                    BillingMonth = bill.BillingMonth,
+                    TotalPolizasEscaneadas = bill.TotalPolizasEscaneadas,
+                    AppliedTierName = bill.AppliedTier?.TierName ?? "Sin tier",
+                    PricePerPoliza = bill.PricePerPoliza,
+                    SubTotal = bill.SubTotal,
+                    TaxAmount = bill.TaxAmount,
+                    TotalAmount = bill.TotalAmount,
+                    Status = bill.Status,
+                    GeneratedAt = bill.GeneratedAt,
+                    DueDate = bill.DueDate,
+                    CompanyName = bill.CompanyName,
+                    CompanyAddress = bill.CompanyAddress,
+                    CompanyRUC = bill.CompanyRUC,
+                    BillingItemsCount = bill.BillingItems.Count
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo facturas pendientes para {Month}/{Year}", month, year);
+                throw;
+            }
+        }
+
+        private async Task CheckAndClosePreviousMonthAsync()
+        {
+            try
+            {
+                var now = DateTime.UtcNow;
+                var lastMonth = now.AddMonths(-1);
+                if (now.Day <= 5)
+                {
+                    var pendingBills = await _context.MonthlyBilling
+                        .Where(mb => mb.BillingYear == lastMonth.Year &&
+                                    mb.BillingMonth == lastMonth.Month &&
+                                    mb.Status == "Pending")
+                        .ToListAsync();
+
+                    if (pendingBills.Any())
+                    {
+                        _logger.LogInformation("Auto-cerrando mes {Month}/{Year}", lastMonth.Month, lastMonth.Year);
+
+                        foreach (var bill in pendingBills)
+                        {
+                            await UpdateMonthlyBillTotalsAsync(bill);
+                            bill.Status = "Generated";
+                            bill.GeneratedAt = DateTime.UtcNow;
+                        }
+
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("Mes {Month}/{Year} cerrado automáticamente", lastMonth.Month, lastMonth.Year);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error en auto-cierre mensual");
+            }
+        }
+
+        private async Task<MonthlyBilling> GetOrCreateMonthlyBillAsync(int year, int month, int userId)
+        {
+            var existingBill = await _context.MonthlyBilling
+                .FirstOrDefaultAsync(mb => mb.BillingYear == year &&
+                                          mb.BillingMonth == month &&
+                                          mb.UserId == userId);
+
+            if (existingBill != null) return existingBill;
+
+            var newBill = new MonthlyBilling
+            {
+                UserId = userId,
+                BillingYear = year,
+                BillingMonth = month,
+                TotalPolizasEscaneadas = 0,
+                TotalBillableScans = 0,
+                AppliedTierId = 1,
+                PricePerPoliza = 0,
+                SubTotal = 0,
+                TaxAmount = 0,
+                TotalAmount = 0,
+                Status = "Pending",
+                GeneratedAt = DateTime.UtcNow,
+                DueDate = new DateTime(year, month, 1).AddMonths(1).AddDays(30),
+                CompanyName = "Empresa", 
+                CompanyAddress = "Dirección",
+                CompanyRUC = "RUC"
+            };
+
+            _context.MonthlyBilling.Add(newBill);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Nueva factura creada para {Month}/{Year}", month, year);
+            return newBill;
+        }
+
+        private async Task UpdateMonthlyBillTotalsAsync(MonthlyBilling monthlyBill)
+        {
+            var billingItems = await _context.BillingItems
+                .Where(bi => bi.MonthlyBillingId == monthlyBill.Id)
+                .ToListAsync();
+
+            var totalItems = billingItems.Count;
+            _logger.LogInformation("Contando items para factura {BillId}: {Count}", monthlyBill.Id, totalItems);
+
+            if (totalItems > 0)
+            {
+                var tier = await _pricingService.GetApplicableTierAsync(totalItems);
+
+                if (monthlyBill.AppliedTierId != tier.Id)
+                {
+                    foreach (var item in billingItems)
+                    {
+                        item.PricePerPoliza = tier.PricePerPoliza;
+                        item.Amount = tier.PricePerPoliza;
+                    }
+                    _logger.LogInformation("Tier actualizado a {TierName}", tier.TierName);
+                }
+
+                var subTotal = billingItems.Sum(bi => bi.Amount);
+
+                await _context.Database.ExecuteSqlRawAsync(
+                    @"UPDATE MonthlyBilling 
+                        SET TotalPolizasEscaneadas = {0},
+                            TotalBillableScans = {1},
+                            SubTotal = {2},
+                            TotalAmount = {3},
+                            AppliedTierId = {4},
+                            PricePerPoliza = {5}
+                        WHERE Id = {6}",
+                    totalItems, totalItems, subTotal, subTotal, tier.Id, tier.PricePerPoliza, monthlyBill.Id);
+
+                _logger.LogInformation("Factura {BillId} actualizada directamente: {Count} pólizas, ${Total}",
+                    monthlyBill.Id, totalItems, subTotal);
+            }
+        }
+
+        public async Task ProcessMonthlyClosureAsync()
+        {
+            try
+            {
+                var lastMonth = DateTime.UtcNow.AddMonths(-1);
+                var year = lastMonth.Year;
+                var month = lastMonth.Month;
+
+                _logger.LogInformation("Ejecutando cierre automático para {Month}/{Year}", month, year);
+
+                var pendingBills = await _context.MonthlyBilling
+                    .Where(mb => mb.BillingYear == year &&
+                                mb.BillingMonth == month &&
+                                mb.Status == "Pending")
+                    .ToListAsync();
+
+                if (!pendingBills.Any())
+                {
+                    _logger.LogInformation("No hay facturas pendientes para {Month}/{Year}", month, year);
+                    return;
+                }
+
+                foreach (var bill in pendingBills)
+                {
+                    await UpdateMonthlyBillTotalsAsync(bill);
+
+                    bill.Status = "Generated";
+                    bill.GeneratedAt = DateTime.UtcNow;
+
+                    _logger.LogInformation("Factura {BillId} cerrada: {Count} polizas, ${Total}",
+                        bill.Id, bill.TotalPolizasEscaneadas, bill.TotalAmount);
+                }
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Cierre completado para {Month}/{Year}: {Count} facturas",
+                    month, year, pendingBills.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error en cierre automático mensual");
+                throw;
+            }
+        }
+
         public async Task<BillingStatsDto> GetCurrentMonthStatsAsync()
         {
             try

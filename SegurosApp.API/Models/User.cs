@@ -23,6 +23,7 @@ namespace SegurosApp.API.Models
 
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastLoginAt { get; set; }
+        public DateTime? LastLogoutAt { get; set; }
         public bool IsActive { get; set; } = true;
         public int? TenantId { get; set; }
 

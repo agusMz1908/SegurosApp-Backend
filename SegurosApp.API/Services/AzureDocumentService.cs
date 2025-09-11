@@ -19,19 +19,22 @@ namespace SegurosApp.API.Services
         private readonly DocumentIntelligenceClient _documentClient;
         private readonly DocumentFieldParser _fieldParser;
         private readonly IAzureModelMappingService _modelMappingService;
+        private readonly BillingService _billingService;
 
         public AzureDocumentService(
             AppDbContext context,
             IConfiguration configuration,
             ILogger<AzureDocumentService> logger,
             DocumentFieldParser fieldParser,
-            IAzureModelMappingService modelMappingService)
+            IAzureModelMappingService modelMappingService,
+            BillingService billingService)
         {
             _context = context;
             _configuration = configuration;
             _logger = logger;
             _fieldParser = fieldParser;
-            _modelMappingService = modelMappingService; 
+            _modelMappingService = modelMappingService;
+            _billingService = billingService;
 
             var endpoint = _configuration["AzureDocumentIntelligence:Endpoint"];
             var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
@@ -634,7 +637,7 @@ namespace SegurosApp.API.Services
             await _context.SaveChangesAsync();
         }
 
-        public async Task UpdateScanWithVelneoInfoAsync(int scanId, string? velneoPolizaNumber, bool velneoCreated)
+        public async Task UpdateScanWithVelneoInfoAsync(int scanId, string velneoPolizaNumber, bool velneoCreated)
         {
             try
             {
@@ -644,21 +647,47 @@ namespace SegurosApp.API.Services
                 var scan = await _context.DocumentScans.FindAsync(scanId);
                 if (scan == null)
                 {
-                    _logger.LogWarning("Scan {ScanId} no encontrado para actualizar con Velneo", scanId);
+                    _logger.LogWarning("Scan {ScanId} no encontrado", scanId);
                     return;
                 }
 
                 scan.VelneoPolizaNumber = velneoPolizaNumber;
                 scan.VelneoCreated = velneoCreated;
 
-                if (velneoCreated && !scan.IsBilled)
+                if (velneoCreated && scan.IsBillable && !scan.IsBilled)
                 {
-                    scan.IsBillable = true;
+                    try
+                    {
+                        await _billingService.AddToCurrentMonthBillingAsync(scanId, scan.UserId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error en facturación automática para scan {ScanId}", scanId);
+                    }
                 }
 
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Scan {ScanId} actualizado con info Velneo exitosamente", scanId);
+                if (velneoCreated && scan.IsBillable && !scan.IsBilled)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Agregando a factura mensual automática para scan {ScanId}", scanId);
+
+                        var billingItem = await _billingService.AddToCurrentMonthBillingAsync(scanId, scan.UserId);
+
+                        if (billingItem != null)
+                        {
+                            _logger.LogInformation("Scan {ScanId} agregado a factura mensual exitosamente", scanId);
+                        }
+                    }
+                    catch (Exception billingEx)
+                    {
+                        _logger.LogError(billingEx, "Error agregando scan {ScanId} a factura mensual, pero Velneo fue exitoso", scanId);
+                    }
+                }
+
+                _logger.LogInformation("Scan {ScanId} actualizado exitosamente", scanId);
             }
             catch (Exception ex)
             {

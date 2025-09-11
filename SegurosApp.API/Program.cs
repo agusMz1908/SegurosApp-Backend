@@ -63,6 +63,8 @@ builder.Services.AddScoped<IAzureModelMappingService, AzureModelMappingService>(
 builder.Services.AddScoped<PolizaMapperService>();
 builder.Services.AddScoped<IPdfService, PdfService>();
 builder.Services.AddScoped<IVelneoMetricsService, VelneoMetricsService>();
+builder.Services.AddScoped<BillingService>();
+builder.Services.AddScoped<PricingService>();
 
 builder.Services.AddCors(options =>
 {

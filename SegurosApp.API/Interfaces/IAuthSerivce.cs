@@ -8,4 +8,5 @@ public interface IAuthService
     Task<ApiResponse> ChangePasswordAsync(int userId, string currentPassword, string newPassword);
     Task<UserDto?> GetUserByIdAsync(int userId);
     Task<bool> ValidateTokenAsync(string token);
+    Task<ApiResponse> LogoutAsync(int userId);
 }

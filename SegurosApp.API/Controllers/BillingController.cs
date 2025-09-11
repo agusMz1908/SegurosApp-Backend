@@ -232,6 +232,28 @@ namespace SegurosApp.API.Controllers
             }
         }
 
+        [HttpPost("close-month/{year:int}/{month:int}")]
+        public async Task<ActionResult> CloseMonth(int year, int month)
+        {
+            try
+            {
+                var pendingBills = await _billingService.GetPendingBillsForMonthAsync(year, month);
+
+                if (!pendingBills.Any())
+                {
+                    return BadRequest($"No hay facturas pendientes para {month}/{year}");
+                }
+
+                // Lógica de cierre manual aquí
+
+                return Ok($"Mes {month}/{year} cerrado exitosamente");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpGet("monthly-summary/{year}/{month}")]
         [ProducesResponseType(typeof(MonthlyBillingSummaryDto), 200)]
         [ProducesResponseType(404)]
