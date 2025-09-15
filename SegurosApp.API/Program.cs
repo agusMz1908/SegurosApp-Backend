@@ -68,9 +68,17 @@ builder.Services.AddScoped<PricingService>();
 
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        policy.WithOrigins(
+                "http://localhost:3000",
+                "https://localhost:3000",
+                "http://localhost:3001",
+                "https://localhost:3001"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
 
@@ -120,9 +128,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseCors();
+app.UseCors("AllowFrontend");  
 app.UseAuthentication();
-app.UseTenantResolution(); 
+app.UseTenantResolution();
 app.UseAuthorization();
 app.MapControllers();
 
@@ -138,17 +146,17 @@ using (var scope = app.Services.CreateScope())
             var userCount = await context.Users.CountAsync();
             var tenantCount = await context.TenantConfigurations.CountAsync();
 
-            logger.LogInformation("✅ DB conectada - {UserCount} usuarios, {TenantCount} tenants",
+            logger.LogInformation("DB conectada - {UserCount} usuarios, {TenantCount} tenants",
                 userCount, tenantCount);
         }
         else
         {
-            logger.LogError("❌ No se puede conectar a la base de datos");
+            logger.LogError("No se puede conectar a la base de datos");
         }
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "❌ Error de conexión: {Message}", ex.Message);
+        logger.LogError(ex, "Error de conexión: {Message}", ex.Message);
     }
 }
 

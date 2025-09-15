@@ -825,16 +825,13 @@ namespace SegurosApp.API.Controllers
 
         [HttpGet("secciones")]
         [ProducesResponseType(typeof(ApiResponse<List<SeccionItem>>), 200)]
-        public async Task<ActionResult<ApiResponse<List<SeccionItem>>>> GetSecciones(
-            [FromQuery] int? companiaId = null)
+        public async Task<ActionResult<ApiResponse<List<SeccionItem>>>> GetSecciones()
         {
             try
             {
                 var userId = GetCurrentUserId();
-                _logger.LogInformation("Usuario {UserId} obteniendo secciones (compañía: {CompaniaId})",
-                    userId, companiaId?.ToString() ?? "todas");
-
-                var secciones = await _masterDataService.GetSeccionesAsync(companiaId);
+                _logger.LogInformation("Usuario {UserId} obteniendo todas las secciones", userId);
+                var secciones = await _masterDataService.GetSeccionesAsync(null);
 
                 _logger.LogInformation("Secciones obtenidas: {Count}", secciones.Count);
 

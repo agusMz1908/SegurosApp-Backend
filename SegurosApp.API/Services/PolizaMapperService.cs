@@ -173,7 +173,7 @@ namespace SegurosApp.API.Services
                 moncod = overrides?.CurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
                 conviamon = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
                 congesti = "1",
-                congeses = "2",
+                congeses = "1",
                 contra = "1",
                 convig = "1",
                 com_alias = companiaInfo?.comnom ?? "",
