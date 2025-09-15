@@ -437,15 +437,29 @@ namespace SegurosApp.API.Services
 
         private string ExtractBrandFromText(string text)
         {
-            if (string.IsNullOrEmpty(text)) return "";
+            if (string.IsNullOrEmpty(text))
+                return "";
 
-            var match = Regex.Match(text, @"(?:Marca|MARCA):\s*([^:]+?)(?:\s+(?:Modelo|MODELO)|$)", RegexOptions.IgnoreCase);
-            if (match.Success)
+            var cleaned = text.ToUpper()
+                             .Replace("MARCA ", "")
+                             .Replace("BRAND ", "")
+                             .Replace("FABRICANTE ", "")
+                             .Trim();
+
+            var knownBrands = new[] {
+        "VOLKSWAGEN", "TOYOTA", "CHEVROLET", "FORD", "NISSAN",
+        "HONDA", "HYUNDAI", "KIA", "RENAULT", "PEUGEOT", "FIAT"
+    };
+
+            foreach (var brand in knownBrands)
             {
-                return CleanText(match.Groups[1].Value);
+                if (cleaned.Contains(brand))
+                {
+                    return brand;
+                }
             }
 
-            return CleanText(text);
+            return cleaned;
         }
 
         private string ExtractBrokerFromText(string text)
