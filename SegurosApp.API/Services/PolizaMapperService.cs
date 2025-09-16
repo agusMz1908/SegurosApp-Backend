@@ -46,6 +46,7 @@ namespace SegurosApp.API.Services
 
                 var mappedData = await MapBasicPolizaDataAsync(normalizedData, context);
                 response.MappedData = mappedData;
+                response.NormalizedData = normalizedData; 
 
                 var criticalValidation = ValidateCriticalFields(mappedData, normalizedData);
 
@@ -60,13 +61,17 @@ namespace SegurosApp.API.Services
                 response.CompletionPercentage = metrics.OverallCompletionPercentage;
 
                 response.IsComplete = DetermineIfComplete(mappedData, criticalValidation, requiresAttention);
+                response.OverallCompletionPercentage = response.CompletionPercentage;
                 response.ConfirmedByPreSelection = new List<string>
-                {
-                    "cliente", "compania", "seccion"
-                };
+        {
+            "cliente", "compania", "seccion"
+        };
 
                 _logger.LogInformation("Mapeo con contexto completado: {CompletionPercentage:F1}% - Listo: {IsComplete}",
                     response.CompletionPercentage, response.IsComplete);
+
+                _logger.LogInformation("Datos normalizados incluidos en respuesta: {CamposNormalizados} campos",
+                    normalizedData.Count);
 
                 return response;
             }
@@ -78,6 +83,7 @@ namespace SegurosApp.API.Services
                 {
                     IsComplete = false,
                     CompletionPercentage = 0,
+                    NormalizedData = new Dictionary<string, object>(), 
                     RequiresAttention = new List<FieldMappingIssue>
             {
                 new FieldMappingIssue

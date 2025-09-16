@@ -22,6 +22,9 @@ namespace SegurosApp.API.Services.CompanyMappers
             // Mapear campos específicos de SURA
             MapSuraSpecificFields(normalized);
 
+            // ✅ NUEVO: Limpiar campos del vehículo (quitar prefijos)
+            CleanVehicleFields(normalized);
+
             return normalized;
         }
 
@@ -54,6 +57,75 @@ namespace SegurosApp.API.Services.CompanyMappers
                     _logger.LogInformation("SURA - Extraídas {Cuotas} cuotas desde: {FormaPago}", cuotas, formaPago);
                 }
             }
+        }
+
+        // ✅ NUEVO: Método para limpiar campos del vehículo
+        private void CleanVehicleFields(Dictionary<string, object> data)
+        {
+            var fieldsToClean = new[]
+            {
+                "vehiculo.marca",
+                "vehiculo.modelo",
+                "vehiculo.motor",
+                "vehiculo.chasis",
+                "vehiculo.anio",
+                "vehiculo.color",
+                "vehiculo.tipo",
+                "vehiculo.matricula",
+                "vehiculo.patente"
+            };
+
+            foreach (var field in fieldsToClean)
+            {
+                if (data.ContainsKey(field))
+                {
+                    var originalValue = data[field].ToString();
+                    var cleanedValue = CleanFieldValue(originalValue, field);
+
+                    if (cleanedValue != originalValue)
+                    {
+                        data[field] = cleanedValue;
+                        _logger.LogInformation("SURA - Campo limpiado: {Field} '{Original}' -> '{Clean}'",
+                            field, originalValue, cleanedValue);
+                    }
+                }
+            }
+        }
+
+        // ✅ NUEVO: Método para limpiar valores específicos de SURA
+        private string CleanFieldValue(string value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+
+            var cleaned = value.Replace("\n", " ").Replace("\r", "").Trim();
+
+            // Prefijos específicos de SURA
+            var prefixesToRemove = new Dictionary<string, string[]>
+            {
+                ["vehiculo.marca"] = new[] { "Marca\n", "Marca ", "MARCA\n", "MARCA " },
+                ["vehiculo.modelo"] = new[] { "Modelo\n", "Modelo ", "MODELO\n", "MODELO " },
+                ["vehiculo.motor"] = new[] { "Motor\n", "Motor ", "MOTOR\n", "MOTOR " },
+                ["vehiculo.chasis"] = new[] { "Chasis\n", "Chasis ", "CHASIS\n", "CHASIS " },
+                ["vehiculo.anio"] = new[] { "Año\n", "Año ", "AÑO\n", "AÑO " },
+                ["vehiculo.color"] = new[] { "Color\n", "Color ", "COLOR\n", "COLOR " },
+                ["vehiculo.tipo"] = new[] { "Tipo\n", "Tipo ", "TIPO\n", "TIPO " },
+                ["vehiculo.matricula"] = new[] { "Matrícula\n", "Matrícula ", "MATRÍCULA\n", "MATRÍCULA ", "Matricula\n", "Matricula ", "MATRICULA\n", "MATRICULA " },
+                ["vehiculo.patente"] = new[] { "Patente\n", "Patente ", "PATENTE\n", "PATENTE " }
+            };
+
+            if (prefixesToRemove.ContainsKey(fieldName))
+            {
+                foreach (var prefix in prefixesToRemove[fieldName])
+                {
+                    if (cleaned.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        cleaned = cleaned.Substring(prefix.Length).Trim();
+                        break;
+                    }
+                }
+            }
+
+            return cleaned;
         }
     }
 }
