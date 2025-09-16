@@ -17,15 +17,18 @@ namespace SegurosApp.API.Services
         private readonly IVelneoMasterDataService _masterDataService;
         private readonly AppDbContext _context;
         private readonly ILogger<PolizaMapperService> _logger;
+        private readonly CompanyMapperFactory _companyMapperFactory;
 
         public PolizaMapperService(
             IVelneoMasterDataService masterDataService,
             AppDbContext context,
-            ILogger<PolizaMapperService> logger)
+            ILogger<PolizaMapperService> logger,
+            CompanyMapperFactory companyMapperFactory)
         {
             _masterDataService = masterDataService;
             _context = context;
             _logger = logger;
+            _companyMapperFactory = companyMapperFactory;
         }
 
         public async Task<PolizaMappingWithContextResponse> MapToPolizaWithContextAsync(
@@ -39,7 +42,7 @@ namespace SegurosApp.API.Services
 
             try
             {
-                var normalizedData = NormalizeExtractedData(extractedData);
+                var normalizedData = await NormalizeExtractedDataAsync(extractedData, context.CompaniaId);
 
                 var mappedData = await MapBasicPolizaDataAsync(normalizedData, context);
                 response.MappedData = mappedData;
@@ -107,7 +110,7 @@ namespace SegurosApp.API.Services
 
             var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
-            var normalizedData = NormalizeExtractedData(extractedData, scan.CompaniaId);
+            var normalizedData = await NormalizeExtractedDataAsync(extractedData, scan.CompaniaId);
 
             var contextClienteId = GetValueWithOverride(overrides?.ClienteId, scan.ClienteId, "ClienteId");
             var contextCompaniaId = GetValueWithOverride(overrides?.CompaniaId, scan.CompaniaId, "CompaniaId");
@@ -364,10 +367,31 @@ namespace SegurosApp.API.Services
 
         #region Normalización de Campos por Compañía - MEJORADA
 
-        private Dictionary<string, object> NormalizeExtractedData(Dictionary<string, object> extractedData, int? companiaId = null)
+        private async Task<Dictionary<string, object>> NormalizeExtractedDataAsync(Dictionary<string, object> extractedData, int? companiaId = null)
         {
             var normalized = new Dictionary<string, object>(extractedData);
 
+            // ✅ NUEVO: Usar mappers específicos si está habilitado
+            if (companiaId.HasValue)
+            {
+                try
+                {
+                    var mapper = _companyMapperFactory.GetMapper(companiaId);
+                    var enhancedNormalized = await mapper.NormalizeFieldsAsync(normalized, _masterDataService);
+
+                    _logger.LogInformation("Usando normalización mejorada para compañía {CompaniaId}: {Mapper}",
+                        companiaId, mapper.GetCompanyName());
+
+                    return enhancedNormalized;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error en normalización mejorada, usando método legacy");
+                    // Fallback al método actual
+                }
+            }
+
+            // 🔄 LEGACY: Método actual como fallback
             if (companiaId.HasValue)
             {
                 switch (companiaId.Value)
@@ -376,20 +400,11 @@ namespace SegurosApp.API.Services
                         _logger.LogInformation("Normalizando campos de MAPFRE (companiaId=3) a formato BSE");
                         NormalizeMapfreFields(normalized);
                         break;
-
-                    case 4: 
+                    case 4:
                         _logger.LogInformation("Normalizando campos de SURA (companiaId=4) a formato BSE");
                         NormalizeSuraFields(normalized);
                         break;
-
-                    default:
-                        _logger.LogDebug("Compañía {CompaniaId} usa formato BSE estándar, no requiere normalización", companiaId);
-                        break;
                 }
-            }
-            else
-            {
-                _logger.LogDebug("Sin companiaId especificado, asumiendo formato BSE estándar");
             }
 
             return normalized;
