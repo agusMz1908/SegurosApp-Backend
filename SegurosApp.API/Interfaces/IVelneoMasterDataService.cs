@@ -2,6 +2,7 @@
 using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
+using SegurosApp.API.DTOs.Velneo.Validation;
 
 namespace SegurosApp.API.Interfaces
 {
@@ -20,9 +21,12 @@ namespace SegurosApp.API.Interfaces
         Task SaveMappingAsync(int userId, string fieldName, string scannedValue, string velneoValue);
 
         Task<CreatePolizaResponse> CreatePolizaAsync(VelneoPolizaRequest request);
+        Task<ContratoItem?> FindPolizaByNumberAndCompanyAsync(string numeroPoliza, int companiaId);
+        Task<ExistingPolizaInfo?> GetExistingPolizaInfoAsync(int polizaId);
         Task<VelneoPaginatedResponse<ContratoItem>> GetPolizasPaginatedAsync(int page = 1, int pageSize = 20, PolizaSearchFilters? filters = null);
         Task<List<ContratoItem>> SearchPolizasQuickAsync(string numeroPoliza, int limit = 10);
         Task<ContratoItem?> GetPolizaDetalleAsync(int polizaId);
+        Task<ContratoItem?> GetContratoDetalleAsync(int contratoId);
 
         Task<ClienteItem?> GetClienteDetalleAsync(int clienteId);
         Task<List<CompaniaItem>> GetCompaniasAsync();

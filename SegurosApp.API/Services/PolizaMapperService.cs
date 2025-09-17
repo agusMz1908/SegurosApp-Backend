@@ -1564,8 +1564,13 @@ namespace SegurosApp.API.Services
         private string ExtractStartDate(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "poliza.vigencia.desde", "vigencia_desde", "confchdes",
-                "datos_poliza", "vigencia.desde"
+                "poliza.fecha-desde",        
+                "poliza.vigencia.desde",     
+                "poliza.fecha_desde",       
+                "vigencia_desde",
+                "confchdes",
+                "datos_poliza",
+                "vigencia.desde"
             };
             return ExtractDateFromFields(data, possibleFields);
         }
@@ -1573,10 +1578,62 @@ namespace SegurosApp.API.Services
         private string ExtractEndDate(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "poliza.vigencia.hasta", "vigencia_hasta", "confchhas",
-                "datos_poliza", "vigencia.hasta"
+                "poliza.fecha-hasta",      
+                "poliza.vigencia.hasta",     
+                "poliza.fecha_hasta",        
+                "vigencia_hasta",
+                "confchhas",
+                "datos_poliza",
+                "vigencia.hasta"
             };
             return ExtractDateFromFields(data, possibleFields);
+        }
+
+        private decimal ExtractFirstInstallmentValue(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "pago.prima_cuota[1]",       
+                "pago.cuotas[0].prima",     
+                "pago.primera_cuota",        
+                "cuota.valor",              
+                "cuota.monto"               
+            };
+
+            foreach (var field in possibleFields)
+            {
+                if (TryGetValue(data, field, out var value))
+                {
+                    var cleanValue = CleanCurrencyValue(value);
+                    if (decimal.TryParse(cleanValue, NumberStyles.Currency, CultureInfo.InvariantCulture, out var amount))
+                    {
+                        _logger.LogDebug("Valor primera cuota encontrado en {Field}: {Value}", field, amount);
+                        return amount;
+                    }
+                }
+            }
+
+            _logger.LogWarning("No se pudo extraer valor de primera cuota");
+            return 0m;
+        }
+
+        private string CleanCurrencyValue(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return "0";
+            var cleaned = Regex.Replace(input, @"[^\d\.,\-]", "").Trim();
+
+            if (cleaned.Contains(","))
+            {
+                if (cleaned.Contains(".") && cleaned.LastIndexOf(',') > cleaned.LastIndexOf('.'))
+                {
+                    cleaned = cleaned.Replace(".", "").Replace(",", ".");
+                }
+                else if (!cleaned.Contains("."))
+                {
+                    cleaned = cleaned.Replace(",", ".");
+                }
+            }
+            
+            return cleaned;
         }
 
         private decimal ExtractPremium(Dictionary<string, object> data)

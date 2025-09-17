@@ -4,7 +4,10 @@ using SegurosApp.API.DTOs;
 using SegurosApp.API.DTOs.Velneo.Item;
 using SegurosApp.API.DTOs.Velneo.Request;
 using SegurosApp.API.DTOs.Velneo.Response;
+using SegurosApp.API.DTOs.Velneo.Validation;
 using SegurosApp.API.Interfaces;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 
@@ -968,7 +971,6 @@ namespace SegurosApp.API.Services
                         PolizaNumber = createResult.PolizaNumber,
                         CreatedAt = createResult.CreatedAt,
                         Warnings = createResult.Warnings,
-                        Validation = createResult.Validation,
                         PolizaAnteriorId = polizaAnteriorId,
                         TipoCambio = tipoCambio,
                         PolizaAnteriorActualizada = true,
@@ -1126,7 +1128,6 @@ namespace SegurosApp.API.Services
                         PolizaNumber = createResult.PolizaNumber,
                         CreatedAt = createResult.CreatedAt,
                         Warnings = createResult.Warnings,
-                        Validation = createResult.Validation,
                         PolizaAnteriorId = polizaAnteriorId,
                         FechaVencimientoAnterior = fechaVencimiento,
                         PolizaAnteriorActualizada = true,
@@ -1162,6 +1163,135 @@ namespace SegurosApp.API.Services
                     ErrorMessage = ex.Message
                 };
             }
+        }
+
+        public async Task<ContratoItem?> FindPolizaByNumberAndCompanyAsync(string numeroPoliza, int companiaId)
+        {
+            if (string.IsNullOrWhiteSpace(numeroPoliza) || companiaId <= 0)
+            {
+                _logger.LogWarning("Parámetros inválidos para búsqueda de póliza: Número='{Numero}', Compañía={CompaniaId}",
+                    numeroPoliza, companiaId);
+                return null;
+            }
+
+            try
+            {
+                _logger.LogInformation("Buscando póliza existente: Número={NumeroPoliza}, Compañía={CompaniaId}",
+                    numeroPoliza, companiaId);
+
+                // Para MultiTenantVelneoService
+                using var client = await CreateTenantHttpClientAsync();
+                var (_, apiKey) = await GetTenantConfigAsync();
+
+                // Buscar en la lista de contratos existentes
+                var queryParams = new List<string>
+        {
+            $"api_key={apiKey}",
+            $"filter[poliza]={Uri.EscapeDataString(numeroPoliza.Trim())}",
+            $"filter[compania]={companiaId}",
+            "page[size]=10"
+        };
+
+                var url = $"v1/contratos?{string.Join("&", queryParams)}";
+                var response = await client.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrEmpty(content) && content != "null")
+                    {
+                        var velneoResponse = JsonSerializer.Deserialize<VelneoContratoResponse>(content,
+                            new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true,
+                                Converters = {
+                            new NullableDateTimeConverter(),
+                            new DateTimeConverter()
+                                }
+                            });
+
+                        // Buscar coincidencia exacta
+                        var contrato = velneoResponse?.contratos?.FirstOrDefault(c =>
+                            string.Equals(c.conpol?.Trim(), numeroPoliza.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                            c.comcod == companiaId);
+
+                        if (contrato != null)
+                        {
+                            _logger.LogInformation("Póliza encontrada: ID={Id}, Número={Numero}, Estado={Estado}",
+                                contrato.id, contrato.conpol, contrato.conestado);
+                            return contrato;
+                        }
+                    }
+
+                    _logger.LogInformation("No se encontró póliza con número {NumeroPoliza} en compañía {CompaniaId}",
+                        numeroPoliza, companiaId);
+                    return null;
+                }
+                else if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    _logger.LogInformation("Póliza no encontrada (404): Número={NumeroPoliza}, Compañía={CompaniaId}",
+                        numeroPoliza, companiaId);
+                    return null;
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Error buscando póliza: Status={Status}, Error={Error}",
+                        response.StatusCode, errorContent);
+                    throw new HttpRequestException($"Error buscando póliza: {response.StatusCode}");
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error de conectividad buscando póliza {NumeroPoliza}", numeroPoliza);
+                throw; // Re-lanzar para manejo en el controller
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error inesperado buscando póliza {NumeroPoliza}", numeroPoliza);
+                throw;
+            }
+        }
+
+        public async Task<ExistingPolizaInfo?> GetExistingPolizaInfoAsync(int polizaId)
+        {
+            try
+            {
+                _logger.LogInformation("Obteniendo información detallada de contrato/póliza {PolizaId}", polizaId);
+
+                // Usar el método existente GetPolizaDetalleAsync que ya tienes implementado
+                var contrato = await GetPolizaDetalleAsync(polizaId);
+                if (contrato == null)
+                {
+                    _logger.LogWarning("No se encontró detalle de contrato/póliza {PolizaId}", polizaId);
+                    return null;
+                }
+
+                // Mapear ContratoItem a ExistingPolizaInfo
+                return new ExistingPolizaInfo
+                {
+                    Id = contrato.id,
+                    NumeroPoliza = contrato.conpol ?? "",
+                    FechaDesde = contrato.fecha_desde,
+                    FechaHasta = contrato.fecha_hasta,
+                    Estado = contrato.conestado ?? "",
+                    EstadoDescripcion = contrato.EstadoDisplay, // Usar la propiedad computada
+                    ClienteNombre = contrato.cliente_nombre ?? "",
+                    MontoTotal = contrato.conpremio,
+                    FechaCreacion = contrato.ingresado,
+                    UltimaModificacion = contrato.last_update
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo información de contrato/póliza {PolizaId}", polizaId);
+                return null;
+            }
+        }
+
+        public async Task<ContratoItem?> GetContratoDetalleAsync(int contratoId)
+        {
+            return await GetPolizaDetalleAsync(contratoId);
         }
 
         #endregion

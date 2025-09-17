@@ -41,6 +41,7 @@ namespace SegurosApp.API.DTOs.Velneo.Item
             ? $"Póliza {conpol}"
             : $"Contrato {id}";
 
+
         [JsonIgnore]
         public string EstadoDisplay => conestado switch
         {
