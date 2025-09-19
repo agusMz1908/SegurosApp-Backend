@@ -286,9 +286,7 @@ namespace SegurosApp.API.Services
         private string FormatObservations(string? notes, string? userComments, VelneoPolizaRequest request, Dictionary<string, object> normalizedData)
         {
             var parts = new List<string> { "Generado desde escaneo automático." };
-
-            // Agregar doble salto de línea después del texto inicial
-            parts.Add(""); // Línea vacía
+            parts.Add("");
 
             if (!string.IsNullOrWhiteSpace(notes))
                 parts.Add($"Notas: {notes}");
@@ -302,7 +300,6 @@ namespace SegurosApp.API.Services
                 parts.Add(cronograma);
             }
 
-            // Cambiar de " " a "\n" para saltos de línea apropiados
             return string.Join("\n", parts);
         }
 
@@ -312,10 +309,9 @@ namespace SegurosApp.API.Services
             {
                 var cronograma = new StringBuilder();
 
-                // No agregar línea vacía al inicio aquí, ya se maneja en FormatObservations
                 cronograma.AppendLine("CRONOGRAMA DE CUOTAS");
                 cronograma.AppendLine($"Total: ${request.contot:N2} en {request.concuo} cuotas");
-                cronograma.AppendLine(); // Línea vacía después del encabezado
+                cronograma.AppendLine(); 
 
                 bool usedRealData = false;
 
