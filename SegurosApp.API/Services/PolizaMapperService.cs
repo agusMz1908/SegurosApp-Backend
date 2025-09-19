@@ -287,6 +287,9 @@ namespace SegurosApp.API.Services
         {
             var parts = new List<string> { "Generado desde escaneo automático." };
 
+            // Agregar doble salto de línea después del texto inicial
+            parts.Add(""); // Línea vacía
+
             if (!string.IsNullOrWhiteSpace(notes))
                 parts.Add($"Notas: {notes}");
 
@@ -299,7 +302,8 @@ namespace SegurosApp.API.Services
                 parts.Add(cronograma);
             }
 
-            return string.Join(" ", parts);
+            // Cambiar de " " a "\n" para saltos de línea apropiados
+            return string.Join("\n", parts);
         }
 
         private string GenerarCronogramaCuotasFromData(VelneoPolizaRequest request, Dictionary<string, object> normalizedData)
@@ -307,12 +311,14 @@ namespace SegurosApp.API.Services
             try
             {
                 var cronograma = new StringBuilder();
-                cronograma.AppendLine();
-                cronograma.AppendLine("=== CRONOGRAMA DE CUOTAS ===");
+
+                // No agregar línea vacía al inicio aquí, ya se maneja en FormatObservations
+                cronograma.AppendLine("CRONOGRAMA DE CUOTAS");
                 cronograma.AppendLine($"Total: ${request.contot:N2} en {request.concuo} cuotas");
-                cronograma.AppendLine();
+                cronograma.AppendLine(); // Línea vacía después del encabezado
 
                 bool usedRealData = false;
+
                 for (int i = 0; i < request.concuo; i++)
                 {
                     var fechaKey = $"pago.cuotas[{i}].vencimiento";
@@ -347,7 +353,8 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                cronograma.AppendLine("===============================");
+                cronograma.AppendLine("FIN CRONOGRAMA CUOTAS");
+
                 return cronograma.ToString();
             }
             catch (Exception ex)
