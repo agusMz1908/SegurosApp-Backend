@@ -1098,16 +1098,27 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                var observacionesCompletas = $"Renovación de póliza {polizaAnteriorId}";
-                if (fechaVencimiento.HasValue)
+                if (string.IsNullOrEmpty(request.observaciones))
                 {
-                    observacionesCompletas += $". Vencimiento anterior: {fechaVencimiento.Value:dd/MM/yyyy}";
+                    var observacionesCompletas = $"Renovación de póliza {polizaAnteriorId}";
+                    if (fechaVencimiento.HasValue)
+                    {
+                        observacionesCompletas += $". Vencimiento anterior: {fechaVencimiento.Value:dd/MM/yyyy}";
+                    }
+                    if (!string.IsNullOrEmpty(observaciones))
+                    {
+                        observacionesCompletas += $". {observaciones}";
+                    }
+                    request.observaciones = observacionesCompletas;
+
+                    _logger.LogInformation("Observaciones generadas por MultiTenantVelneoService (legacy): {Observaciones}",
+                        request.observaciones);
                 }
-                if (!string.IsNullOrEmpty(observaciones))
+                else
                 {
-                    observacionesCompletas += $". {observaciones}";
+                    _logger.LogInformation("Usando observaciones pre-generadas: {Observaciones}",
+                        request.observaciones);
                 }
-                request.observaciones = observacionesCompletas;
 
                 _logger.LogInformation("Creando nueva póliza con conpadre: {ConPadre} y trámite: Renovación (2)", request.conpadre);
                 _logger.LogInformation("Fechas renovación - Desde: {FechaDesde}, Hasta: {FechaHasta}",

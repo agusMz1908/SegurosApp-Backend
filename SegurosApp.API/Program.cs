@@ -7,6 +7,8 @@ using SegurosApp.API.Extensions;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Middleware;
 using SegurosApp.API.Services;
+using SegurosApp.API.Services.Poliza;
+using SegurosApp.API.Services.Poliza.Shared;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,6 +69,10 @@ builder.Services.AddScoped<IVelneoMetricsService, VelneoMetricsService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<PricingService>();
 builder.Services.AddCompanyMappingServices();
+
+builder.Services.AddScoped<PolizaDataExtractor>();
+builder.Services.AddScoped<ObservationsGenerator>();
+builder.Services.AddScoped<RenewPolizaService>();
 
 builder.Services.AddCors(options =>
 {
