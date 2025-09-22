@@ -199,6 +199,136 @@ namespace SegurosApp.API.Services
             return request;
         }
 
+        public async Task<VelneoPolizaRequest> CreateVelneoRequestFromRenewAsync(
+            int scanId,
+            int userId,
+            RenewPolizaRequest renewRequest,
+            object? polizaAnterior = null)
+        {
+            _logger.LogInformation("Creando request Velneo para renovación - Scan: {ScanId}, Usuario: {UserId}, PolizaAnterior: {PolizaAnteriorId}",
+                scanId, userId, renewRequest.PolizaAnteriorId);
+
+            var scan = await _context.DocumentScans
+                .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
+
+            if (scan == null)
+            {
+                _logger.LogError("Scan {ScanId} no encontrado para usuario {UserId}", scanId, userId);
+                throw new ArgumentException($"Scan {scanId} no encontrado para usuario {userId}");
+            }
+
+            var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
+                ?? new Dictionary<string, object>();
+            var normalizedData = await NormalizeExtractedDataAsync(extractedData, scan.CompaniaId);
+
+            // ✅ USAR CONTEXTO DEL SCAN (heredado de la selección de póliza)
+            var contextClienteId = scan.ClienteId ?? throw new ArgumentException("ClienteId requerido para renovación");
+            var contextCompaniaId = scan.CompaniaId ?? throw new ArgumentException("CompaniaId requerido para renovación");
+            var contextSeccionId = scan.SeccionId ?? throw new ArgumentException("SeccionId requerido para renovación");
+
+            // ✅ OBTENER INFORMACIÓN DEL CONTEXTO (igual que el método original)
+            ClienteItem? clienteInfo = null;
+            CompaniaItem? companiaInfo = null;
+            SeccionItem? seccionInfo = null;
+
+            try
+            {
+                clienteInfo = await _masterDataService.GetClienteDetalleAsync(contextClienteId);
+
+                var companias = await _masterDataService.GetCompaniasAsync();
+                companiaInfo = companias.FirstOrDefault(c => c.id == contextCompaniaId);
+
+                var secciones = await _masterDataService.GetSeccionesAsync(contextCompaniaId);
+                seccionInfo = secciones.FirstOrDefault(s => s.id == contextSeccionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error obteniendo información de maestros para renovación: {Error}", ex.Message);
+            }
+
+            // ✅ PROCESAR FECHAS (igual que el método original)
+            var rawStartDate = GetStringValueWithRenewOverride(renewRequest.FechaDesde, ExtractStartDate(normalizedData), "FechaInicio");
+            var rawEndDate = GetStringValueWithRenewOverride(renewRequest.FechaHasta, ExtractEndDate(normalizedData), "FechaFin");
+            var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
+            var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
+
+            // ✅ PROCESAR MONTOS
+            var extractedPremium = renewRequest.Premio ?? ExtractPremium(normalizedData);
+            var extractedTotal = renewRequest.MontoTotal ?? ExtractTotalAmount(normalizedData);
+            var extractedCuotas = renewRequest.CantidadCuotas ?? ExtractInstallmentCount(normalizedData);
+            var extractedPaymentMethod = ExtractPaymentMethod(normalizedData);
+
+            // ✅ CREAR REQUEST CON LA MISMA ESTRUCTURA QUE EL MÉTODO ORIGINAL
+            var request = new VelneoPolizaRequest
+            {
+                // IDs principales (del contexto del scan)
+                clinro = contextClienteId,
+                comcod = contextCompaniaId,
+                seccod = contextSeccionId,
+
+                // Datos de póliza con overrides del frontend
+                conpol = renewRequest.NumeroPoliza ?? ExtractPolicyNumber(normalizedData),
+                conend = ExtractEndorsement(normalizedData),
+                confchdes = formattedStartDate,
+                confchhas = formattedEndDate,
+                conpremio = (int)Math.Round(extractedPremium),
+                contot = (int)Math.Round(extractedTotal),
+
+                // Datos del vehículo con overrides del frontend
+                conmaraut = renewRequest.VehiculoMarca ?? ExtractVehicleBrand(normalizedData),
+                conmodaut = renewRequest.VehiculoModelo ?? ExtractVehicleModel(normalizedData),
+                conanioaut = renewRequest.VehiculoAno ?? ExtractVehicleYear(normalizedData),
+                conmotor = renewRequest.VehiculoMotor ?? ExtractMotorNumber(normalizedData),
+                conchasis = renewRequest.VehiculoChasis ?? ExtractChassisNumber(normalizedData),
+                conmataut = renewRequest.VehiculoPatente ?? ExtractVehiclePlate(normalizedData),
+
+                // Datos del cliente
+                clinom = clienteInfo?.clinom ?? "",
+                condom = clienteInfo?.clidir ?? ExtractClientAddress(normalizedData),
+                clinro1 = ExtractBeneficiaryId(normalizedData),
+
+                // ✅ MASTER DATA CON OVERRIDES DEL FRONTEND (PRIORITARIOS)
+                dptnom = await GetIntValueWithRenewOverrideAsync(renewRequest.DepartamentoId, () => FindDepartmentIdAsync(normalizedData)),
+                combustibles = await GetStringValueWithRenewOverrideAsync(renewRequest.CombustibleId, () => FindFuelCodeAsync(normalizedData)),
+                desdsc = await GetIntValueWithRenewOverrideAsync(renewRequest.DestinoId, () => FindDestinationIdAsync(normalizedData)),
+                catdsc = await GetIntValueWithRenewOverrideAsync(renewRequest.CategoriaId, () => FindCategoryIdAsync(normalizedData)),
+                caldsc = await GetIntValueWithRenewOverrideAsync(renewRequest.CalidadId, () => FindQualityIdAsync(normalizedData)),
+                tarcod = await GetIntValueWithRenewOverrideAsync(renewRequest.TarifaId, () => FindTariffIdAsync(normalizedData)),
+                corrnom = GetIntValueWithRenewOverride(renewRequest.CorredorId, ExtractCorredorId(normalizedData)),
+
+                // Condiciones de pago
+                consta = MapPaymentMethodCode(extractedPaymentMethod),
+                concuo = extractedCuotas,
+                moncod = GetIntValueWithRenewOverride(renewRequest.MonedaId, ExtractCurrencyCode(normalizedData)),
+                conviamon = GetIntValueWithRenewOverride(renewRequest.MonedaId, ExtractCurrencyCode(normalizedData)),
+
+                // Estados (igual que el método original)
+                congesti = "1",
+                congeses = "1",
+                contra = "1",
+                convig = "1",
+
+                // Datos adicionales
+                com_alias = companiaInfo?.comnom ?? "",
+                ramo = seccionInfo?.seccion ?? "",
+
+                // Metadatos
+                ingresado = DateTime.UtcNow,
+                last_update = DateTime.UtcNow,
+                app_id = scanId,
+                conpadre = 0
+            };
+
+            var polizaAnteriorNumero = ExtractPolizaNumber(polizaAnterior);
+            request.observaciones = FormatRenovationObservations(renewRequest, request, normalizedData, polizaAnteriorNumero);
+
+            // ✅ LOG DE OVERRIDES APLICADOS
+            LogAppliedOverrides(renewRequest);
+
+            await ValidateVelneoRequest(request);
+            return request;
+        }
+
         private string ExtractVehiclePlate(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
@@ -2068,9 +2198,9 @@ namespace SegurosApp.API.Services
 
             var patterns = new[]
             {
-                @"(\d{1,2})/(\d{1,2})/(\d{4})",  
-                @"(\d{4})-(\d{1,2})-(\d{1,2})",  
-                @"(\d{1,2})-(\d{1,2})-(\d{4})"   
+                @"(\d{1,2})/(\d{1,2})/(\d{4})",
+                @"(\d{4})-(\d{1,2})-(\d{1,2})",
+                @"(\d{1,2})-(\d{1,2})-(\d{4})"
             };
 
             foreach (var pattern in patterns)
@@ -2097,6 +2227,164 @@ namespace SegurosApp.API.Services
                 }
             }
             return "";
+        }
+
+        private string GetStringValueWithRenewOverride(string? frontendValue, string extractedValue, string fieldName)
+        {
+            if (!string.IsNullOrEmpty(frontendValue))
+            {
+                _logger.LogInformation("Usando override de frontend para {FieldName}: {Value}", fieldName, frontendValue);
+                return frontendValue;
+            }
+            return extractedValue ?? "";
+        }
+
+        /// <summary>
+        /// Obtiene int con override del frontend
+        /// </summary>
+        private int GetIntValueWithRenewOverride(string? frontendValue, int extractedValue)
+        {
+            if (!string.IsNullOrEmpty(frontendValue) && int.TryParse(frontendValue, out var parsedValue))
+            {
+                _logger.LogInformation("Usando override numérico de frontend: {Value}", parsedValue);
+                return parsedValue;
+            }
+            return extractedValue;
+        }
+
+        /// <summary>
+        /// Obtiene string con override del frontend de forma async
+        /// </summary>
+        private async Task<string> GetStringValueWithRenewOverrideAsync(string? frontendValue, Func<Task<string>> extractFunc)
+        {
+            if (!string.IsNullOrEmpty(frontendValue))
+            {
+                _logger.LogInformation("Usando override async string de frontend: {Value}", frontendValue);
+                return frontendValue;
+            }
+            return await extractFunc();
+        }
+
+        /// <summary>
+        /// Obtiene int con override del frontend de forma async
+        /// </summary>
+        private async Task<int> GetIntValueWithRenewOverrideAsync(string? frontendValue, Func<Task<int>> extractFunc)
+        {
+            if (!string.IsNullOrEmpty(frontendValue) && int.TryParse(frontendValue, out var parsedValue))
+            {
+                _logger.LogInformation("Usando override async int de frontend: {Value}", parsedValue);
+                return parsedValue;
+            }
+            return await extractFunc();
+        }
+
+        /// <summary>
+        /// Formatea observaciones específicas para renovación
+        /// </summary>
+        private string FormatRenovationObservations(RenewPolizaRequest renewRequest, VelneoPolizaRequest request, Dictionary<string, object> normalizedData, string? polizaAnteriorNumero = null)
+        {
+            var observations = new List<string>();
+
+            // ✅ OBSERVACIONES PRINCIPALES MÁS SIMPLES
+            var numeroPolizaAnterior = polizaAnteriorNumero ?? "N/A";
+            observations.Add($"Renovacion de Poliza {numeroPolizaAnterior} (ID: {renewRequest.PolizaAnteriorId})");
+
+            // ✅ CRONOGRAMA DE CUOTAS
+            if (request.concuo > 1 && request.contot > 0)
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("CRONOGRAMA DE CUOTAS:");
+
+                var valorCuota = Math.Round((decimal)request.contot / request.concuo, 2);
+                var fechaBase = DateTime.TryParse(request.confchdes, out var fechaInicio) ? fechaInicio : DateTime.Now;
+
+                for (int i = 1; i <= request.concuo; i++)
+                {
+                    var fechaCuota = fechaBase.AddMonths(i - 1);
+                    var montoCuota = (i == request.concuo)
+                        ? request.contot - (valorCuota * (request.concuo - 1)) // Última cuota ajusta diferencia
+                        : valorCuota;
+
+                    observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
+                }
+
+                observations.Add($"TOTAL: ${request.contot:N2} en {request.concuo} cuotas");
+            }
+            else if (request.concuo == 1)
+            {
+                observations.Add($"Pago contado: ${request.contot:N2}");
+            }
+
+            // ✅ OBSERVACIONES DEL USUARIO (si las hay)
+            if (!string.IsNullOrEmpty(renewRequest.Observaciones) &&
+                !renewRequest.Observaciones.Contains("Renovación automática"))
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("NOTAS ADICIONALES:");
+                observations.Add(renewRequest.Observaciones);
+            }
+
+            // ✅ COMENTARIOS DEL USUARIO (si los hay)
+            if (!string.IsNullOrEmpty(renewRequest.ComentariosUsuario))
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("COMENTARIOS:");
+                observations.Add(renewRequest.ComentariosUsuario);
+            }
+
+            // ✅ CAMPOS CORREGIDOS (si los hay)
+            if (renewRequest.CamposCorregidos != null && renewRequest.CamposCorregidos.Count > 0)
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add($"Campos corregidos: {string.Join(", ", renewRequest.CamposCorregidos)}");
+            }
+
+            return string.Join("\n", observations);
+        }
+
+        private void LogAppliedOverrides(RenewPolizaRequest renewRequest)
+        {
+            var overrides = new List<string>();
+
+            if (!string.IsNullOrEmpty(renewRequest.CombustibleId)) overrides.Add($"Combustible: {renewRequest.CombustibleId}");
+            if (!string.IsNullOrEmpty(renewRequest.CategoriaId)) overrides.Add($"Categoría: {renewRequest.CategoriaId}");
+            if (!string.IsNullOrEmpty(renewRequest.CalidadId)) overrides.Add($"Calidad: {renewRequest.CalidadId}");
+            if (!string.IsNullOrEmpty(renewRequest.DestinoId)) overrides.Add($"Destino: {renewRequest.DestinoId}");
+            if (!string.IsNullOrEmpty(renewRequest.DepartamentoId)) overrides.Add($"Departamento: {renewRequest.DepartamentoId}");
+            if (!string.IsNullOrEmpty(renewRequest.TarifaId)) overrides.Add($"Tarifa: {renewRequest.TarifaId}");
+
+            if (overrides.Count > 0)
+            {
+                _logger.LogInformation("RENOVACIÓN - Overrides de master data aplicados: {Overrides}", string.Join(", ", overrides));
+            }
+            else
+            {
+                _logger.LogInformation("RENOVACIÓN - Sin overrides de master data, usando mapeo automático");
+            }
+        }
+
+        private string? ExtractPolizaNumber(object? polizaAnterior)
+        {
+            if (polizaAnterior == null) return null;
+
+            try
+            {
+                // Intentar acceder a la propiedad 'conpol' por reflexión
+                var type = polizaAnterior.GetType();
+                var property = type.GetProperty("conpol");
+
+                if (property != null)
+                {
+                    return property.GetValue(polizaAnterior)?.ToString();
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error extrayendo número de póliza anterior: {Error}", ex.Message);
+                return null;
+            }
         }
 
         #endregion

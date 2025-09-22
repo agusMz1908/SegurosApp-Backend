@@ -10,6 +10,7 @@ using SegurosApp.API.DTOs.Velneo.Validation;
 using SegurosApp.API.Interfaces;
 using SegurosApp.API.Models;
 using SegurosApp.API.Services;
+using System.Diagnostics;
 using System.Security.Claims;
 
 namespace SegurosApp.API.Controllers
@@ -699,16 +700,15 @@ namespace SegurosApp.API.Controllers
         }
 
         [HttpPost("{scanId}/renew-in-velneo")]
-        [ProducesResponseType(typeof(RenewPolizaResponse), 200)]
+        [ProducesResponseType(typeof(RenewPolizaApiResponse), 200)]
         [ProducesResponseType(400)]
-        [ProducesResponseType(404)]
         [ProducesResponseType(401)]
-        [Authorize]
-        public async Task<ActionResult<RenewPolizaResponse>> RenewPolizaInVelneo(
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<RenewPolizaApiResponse>> RenewPolizaInVelneo(
             int scanId,
             [FromBody] RenewPolizaRequest request)
         {
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var stopwatch = Stopwatch.StartNew();
             int? userId = null;
 
             try
@@ -716,23 +716,27 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("Iniciando renovación de póliza para scan {ScanId} - Póliza anterior: {PolizaAnteriorId}",
                     scanId, request.PolizaAnteriorId);
 
+                // ✅ LOG DE MASTER DATA RECIBIDO DEL FRONTEND
+                _logger.LogInformation("Master data recibido del frontend - Combustible: {Combustible}, Categoría: {Categoria}, Calidad: {Calidad}",
+                    request.CombustibleId, request.CategoriaId, request.CalidadId);
+
                 if (request.PolizaAnteriorId <= 0)
                 {
-                    return BadRequest(new RenewPolizaResponse
-                    {
-                        Success = false,
-                        Message = "ID de póliza anterior es requerido"
-                    });
+                    return BadRequest(RenewPolizaApiResponse.Error(
+                        "ID de póliza anterior es requerido",
+                        "El campo PolizaAnteriorId debe ser mayor a 0",
+                        request.PolizaAnteriorId,
+                        scanId));
                 }
 
                 userId = GetCurrentUserId();
                 if (userId == null)
                 {
-                    return Unauthorized(new RenewPolizaResponse
-                    {
-                        Success = false,
-                        Message = "Usuario no autenticado"
-                    });
+                    return Unauthorized(RenewPolizaApiResponse.Error(
+                        "Usuario no autenticado",
+                        "Token de autenticación inválido o expirado",
+                        request.PolizaAnteriorId,
+                        scanId));
                 }
 
                 var scan = await _context.DocumentScans
@@ -745,11 +749,11 @@ namespace SegurosApp.API.Controllers
                     await RecordMetricAsync(VelneoOperationType.RENOVACION, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Scan no encontrado", request.PolizaAnteriorId);
 
-                    return NotFound(new RenewPolizaResponse
-                    {
-                        Success = false,
-                        Message = $"Scan {scanId} no encontrado"
-                    });
+                    return NotFound(RenewPolizaApiResponse.Error(
+                        $"Scan {scanId} no encontrado",
+                        "El documento escaneado no existe o no pertenece al usuario actual",
+                        request.PolizaAnteriorId,
+                        scanId));
                 }
 
                 var polizaAnterior = await _masterDataService.GetPolizaDetalleAsync(request.PolizaAnteriorId);
@@ -760,19 +764,40 @@ namespace SegurosApp.API.Controllers
                     await RecordMetricAsync(VelneoOperationType.RENOVACION, userId.Value, scanId, null,
                         stopwatch.ElapsedMilliseconds, "Póliza anterior no encontrada", request.PolizaAnteriorId);
 
-                    return BadRequest(new RenewPolizaResponse
-                    {
-                        Success = false,
-                        Message = $"Póliza anterior {request.PolizaAnteriorId} no encontrada",
-                        PolizaAnteriorId = request.PolizaAnteriorId
-                    });
+                    return BadRequest(RenewPolizaApiResponse.Error(
+                        $"Póliza anterior {request.PolizaAnteriorId} no encontrada",
+                        "La póliza anterior no existe en Velneo o no está disponible para renovación",
+                        request.PolizaAnteriorId,
+                        scanId));
                 }
 
                 _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
-                var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value);
 
-                _logger.LogInformation("Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
+                // ✅ USAR EL NUEVO MÉTODO QUE RECIBE MASTER DATA DEL FRONTEND
+                var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromRenewAsync(
+                    scanId,
+                    userId.Value,
+                    request,
+                    polizaAnterior); // ✅ Pasar la póliza anterior para las observaciones
+
+                // ✅ FORZAR OBSERVACIONES CORRECTAS (temporal para debugging)
+                var observacionesPersonalizadas = GenerateRenovationObservations(
+                    polizaAnterior.conpol,
+                    request.PolizaAnteriorId,
+                    velneoRequest.concuo,
+                    velneoRequest.contot,
+                    velneoRequest.confchdes,
+                    request.Observaciones,
+                    request.ComentariosUsuario);
+
+                velneoRequest.observaciones = observacionesPersonalizadas;
+
+                _logger.LogInformation("Request Velneo creado con master data del frontend - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
                     velneoRequest.clinro, velneoRequest.comcod, velneoRequest.conpol);
+
+                // ✅ LOG DETALLADO DE MASTER DATA APLICADO
+                _logger.LogInformation("Master data aplicado en request Velneo - Combustible: {Combustible}, Categoría: {Categoria}, Calidad: {Calidad}, Destino: {Destino}, Departamento: {Departamento}, Tarifa: {Tarifa}",
+                    velneoRequest.combustibles, velneoRequest.catdsc, velneoRequest.caldsc, velneoRequest.desdsc, velneoRequest.dptnom, velneoRequest.tarcod);
 
                 var result = await _masterDataService.RenewPolizaAsync(
                     velneoRequest,
@@ -800,6 +825,10 @@ namespace SegurosApp.API.Controllers
                 {
                     _logger.LogInformation("Renovación de póliza completada exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
                         scanId, result.VelneoPolizaId, request.PolizaAnteriorId);
+
+                    // ✅ LOG DE ÉXITO CON MASTER DATA
+                    _logger.LogInformation("Renovación exitosa usando master data del frontend - Combustible final: {Combustible}, Categoría final: {Categoria}",
+                        request.CombustibleId ?? "AUTO-DETECTADO", request.CategoriaId ?? "AUTO-DETECTADO");
                 }
                 else
                 {
@@ -807,8 +836,36 @@ namespace SegurosApp.API.Controllers
                         scanId, result.Message);
                 }
 
-                result.ScanId = scanId;
-                return Ok(result);
+                // ✅ CREAR RESPUESTA USANDO EL MAPPER Y AGREGAR INFORMACIÓN ADICIONAL
+                var apiResponse = RenewPolizaApiResponse.FromVelneoResponse(result, scanId, stopwatch.ElapsedMilliseconds);
+
+                // ✅ AGREGAR DEBUG INFO EN DESARROLLO
+                if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
+                {
+                    apiResponse.debugInfo = new Dictionary<string, object>
+                    {
+                        ["masterDataOverrides"] = new
+                        {
+                            combustible = request.CombustibleId,
+                            categoria = request.CategoriaId,
+                            calidad = request.CalidadId,
+                            destino = request.DestinoId,
+                            departamento = request.DepartamentoId,
+                            tarifa = request.TarifaId
+                        },
+                        ["velneoRequestFields"] = new
+                        {
+                            combustibles = velneoRequest.combustibles,
+                            catdsc = velneoRequest.catdsc,
+                            caldsc = velneoRequest.caldsc,
+                            desdsc = velneoRequest.desdsc,
+                            dptnom = velneoRequest.dptnom,
+                            tarcod = velneoRequest.tarcod
+                        }
+                    };
+                }
+
+                return Ok(apiResponse);
             }
             catch (Exception ex)
             {
@@ -820,15 +877,75 @@ namespace SegurosApp.API.Controllers
                         stopwatch.ElapsedMilliseconds, ex.Message, request.PolizaAnteriorId);
                 }
 
-                return StatusCode(500, new RenewPolizaResponse
-                {
-                    Success = false,
-                    Message = "Error interno del servidor",
-                    ErrorMessage = "Se produjo un error inesperado al procesar la renovación",
-                    ScanId = scanId,
-                    PolizaAnteriorId = request.PolizaAnteriorId
-                });
+                return StatusCode(500, RenewPolizaApiResponse.Error(
+                    "Error interno del servidor",
+                    "Se produjo un error inesperado al procesar la renovación",
+                    request.PolizaAnteriorId,
+                    scanId));
             }
+        }
+
+        /// <summary>
+        /// Genera observaciones de renovación con cronograma de cuotas
+        /// </summary>
+        private string GenerateRenovationObservations(
+            string polizaAnteriorNumero,
+            int polizaAnteriorId,
+            int cuotas,
+            int montoTotal,
+            string fechaDesde,
+            string? observacionesUsuario = null,
+            string? comentariosUsuario = null)
+        {
+            var observations = new List<string>();
+
+            // Header simplificado
+            observations.Add($"Renovacion de Poliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
+
+            // Cronograma de cuotas
+            if (cuotas > 1 && montoTotal > 0)
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("CRONOGRAMA DE CUOTAS:");
+
+                var valorCuota = Math.Round((decimal)montoTotal / cuotas, 2);
+                var fechaBase = DateTime.TryParse(fechaDesde, out var fechaInicio) ? fechaInicio : DateTime.Now;
+
+                for (int i = 1; i <= cuotas; i++)
+                {
+                    var fechaCuota = fechaBase.AddMonths(i - 1);
+                    var montoCuota = (i == cuotas)
+                        ? montoTotal - (valorCuota * (cuotas - 1)) // Última cuota ajusta diferencia
+                        : valorCuota;
+
+                    observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
+                }
+
+                observations.Add($"TOTAL: ${montoTotal:N2} en {cuotas} cuotas");
+            }
+            else if (cuotas == 1)
+            {
+                observations.Add($"Pago contado: ${montoTotal:N2}");
+            }
+
+            // Observaciones del usuario
+            if (!string.IsNullOrEmpty(observacionesUsuario) &&
+                !observacionesUsuario.Contains("Renovación automática"))
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("NOTAS ADICIONALES:");
+                observations.Add(observacionesUsuario);
+            }
+
+            // Comentarios del usuario
+            if (!string.IsNullOrEmpty(comentariosUsuario))
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("COMENTARIOS:");
+                observations.Add(comentariosUsuario);
+            }
+
+            return string.Join("\n", observations);
         }
 
         [HttpPost("upload")]
@@ -1548,5 +1665,6 @@ namespace SegurosApp.API.Controllers
                 _logger.LogWarning(ex, "Error registrando métrica, pero operación principal exitosa");
             }
         }
+
     }
 }
