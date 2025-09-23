@@ -947,12 +947,27 @@ namespace SegurosApp.API.Services
                 request.contra = "3";
                 request.congeses = "5";
 
-                var observacionesCompletas = $"Cambio de póliza {polizaAnteriorId}. Tipo: {tipoCambio}";
-                if (!string.IsNullOrEmpty(observaciones))
+                // ✅ CORREGIDO: Solo generar observaciones si vienen vacías
+                if (string.IsNullOrEmpty(request.observaciones))
                 {
-                    observacionesCompletas += $". {observaciones}";
+                    _logger.LogInformation("Generando observaciones básicas para cambio (request sin observaciones)");
+                    var observacionesCompletas = $"Cambio de póliza {polizaAnteriorId}. Tipo: {tipoCambio}";
+                    if (!string.IsNullOrEmpty(observaciones))
+                    {
+                        observacionesCompletas += $". {observaciones}";
+                    }
+                    request.observaciones = observacionesCompletas;
                 }
-                request.observaciones = observacionesCompletas;
+                else
+                {
+                    _logger.LogInformation("Preservando observaciones pre-generadas del ModifyPolizaService");
+
+                    // Solo agregar observaciones adicionales del usuario si no están ya incluidas
+                    if (!string.IsNullOrEmpty(observaciones) && !request.observaciones.Contains(observaciones))
+                    {
+                        request.observaciones += $"\n\nObservaciones adicionales del usuario:\n{observaciones}";
+                    }
+                }
 
                 _logger.LogInformation("Creando nueva póliza con conpadre: {ConPadre}", request.conpadre);
 
@@ -1098,16 +1113,27 @@ namespace SegurosApp.API.Services
                     }
                 }
 
-                var observacionesCompletas = $"Renovación de póliza {polizaAnteriorId}";
-                if (fechaVencimiento.HasValue)
+                if (string.IsNullOrEmpty(request.observaciones))
                 {
-                    observacionesCompletas += $". Vencimiento anterior: {fechaVencimiento.Value:dd/MM/yyyy}";
+                    var observacionesCompletas = $"Renovación de póliza {polizaAnteriorId}";
+                    if (fechaVencimiento.HasValue)
+                    {
+                        observacionesCompletas += $". Vencimiento anterior: {fechaVencimiento.Value:dd/MM/yyyy}";
+                    }
+                    if (!string.IsNullOrEmpty(observaciones))
+                    {
+                        observacionesCompletas += $". {observaciones}";
+                    }
+                    request.observaciones = observacionesCompletas;
+
+                    _logger.LogInformation("Observaciones generadas por MultiTenantVelneoService (legacy): {Observaciones}",
+                        request.observaciones);
                 }
-                if (!string.IsNullOrEmpty(observaciones))
+                else
                 {
-                    observacionesCompletas += $". {observaciones}";
+                    _logger.LogInformation("Usando observaciones pre-generadas: {Observaciones}",
+                        request.observaciones);
                 }
-                request.observaciones = observacionesCompletas;
 
                 _logger.LogInformation("Creando nueva póliza con conpadre: {ConPadre} y trámite: Renovación (2)", request.conpadre);
                 _logger.LogInformation("Fechas renovación - Desde: {FechaDesde}, Hasta: {FechaHasta}",

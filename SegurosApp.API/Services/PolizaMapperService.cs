@@ -179,7 +179,7 @@ namespace SegurosApp.API.Services
                 corrnom = overrides?.BrokerIdOverride ?? ExtractCorredorId(normalizedData),
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = extractedCuotas,
-                moncod = overrides?.CurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
+                moncod = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
                 conviamon = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
                 congesti = "1",
                 congeses = "1",
@@ -319,10 +319,8 @@ namespace SegurosApp.API.Services
                 conpadre = 0
             };
 
-            var polizaAnteriorNumero = ExtractPolizaNumber(polizaAnterior);
-            request.observaciones = FormatRenovationObservations(renewRequest, request, normalizedData, polizaAnteriorNumero);
+            _logger.LogInformation("OBSERVACIONES GENERADAS EN MAPPER: {Observaciones}", request.observaciones);
 
-            // ✅ LOG DE OVERRIDES APLICADOS
             LogAppliedOverrides(renewRequest);
 
             await ValidateVelneoRequest(request);
@@ -2278,70 +2276,6 @@ namespace SegurosApp.API.Services
             return await extractFunc();
         }
 
-        /// <summary>
-        /// Formatea observaciones específicas para renovación
-        /// </summary>
-        private string FormatRenovationObservations(RenewPolizaRequest renewRequest, VelneoPolizaRequest request, Dictionary<string, object> normalizedData, string? polizaAnteriorNumero = null)
-        {
-            var observations = new List<string>();
-
-            // ✅ OBSERVACIONES PRINCIPALES MÁS SIMPLES
-            var numeroPolizaAnterior = polizaAnteriorNumero ?? "N/A";
-            observations.Add($"Renovacion de Poliza {numeroPolizaAnterior} (ID: {renewRequest.PolizaAnteriorId})");
-
-            // ✅ CRONOGRAMA DE CUOTAS
-            if (request.concuo > 1 && request.contot > 0)
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add("CRONOGRAMA DE CUOTAS:");
-
-                var valorCuota = Math.Round((decimal)request.contot / request.concuo, 2);
-                var fechaBase = DateTime.TryParse(request.confchdes, out var fechaInicio) ? fechaInicio : DateTime.Now;
-
-                for (int i = 1; i <= request.concuo; i++)
-                {
-                    var fechaCuota = fechaBase.AddMonths(i - 1);
-                    var montoCuota = (i == request.concuo)
-                        ? request.contot - (valorCuota * (request.concuo - 1)) // Última cuota ajusta diferencia
-                        : valorCuota;
-
-                    observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
-                }
-
-                observations.Add($"TOTAL: ${request.contot:N2} en {request.concuo} cuotas");
-            }
-            else if (request.concuo == 1)
-            {
-                observations.Add($"Pago contado: ${request.contot:N2}");
-            }
-
-            // ✅ OBSERVACIONES DEL USUARIO (si las hay)
-            if (!string.IsNullOrEmpty(renewRequest.Observaciones) &&
-                !renewRequest.Observaciones.Contains("Renovación automática"))
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add("NOTAS ADICIONALES:");
-                observations.Add(renewRequest.Observaciones);
-            }
-
-            // ✅ COMENTARIOS DEL USUARIO (si los hay)
-            if (!string.IsNullOrEmpty(renewRequest.ComentariosUsuario))
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add("COMENTARIOS:");
-                observations.Add(renewRequest.ComentariosUsuario);
-            }
-
-            // ✅ CAMPOS CORREGIDOS (si los hay)
-            if (renewRequest.CamposCorregidos != null && renewRequest.CamposCorregidos.Count > 0)
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add($"Campos corregidos: {string.Join(", ", renewRequest.CamposCorregidos)}");
-            }
-
-            return string.Join("\n", observations);
-        }
-
         private void LogAppliedOverrides(RenewPolizaRequest renewRequest)
         {
             var overrides = new List<string>();
@@ -2385,6 +2319,66 @@ namespace SegurosApp.API.Services
                 _logger.LogWarning("Error extrayendo número de póliza anterior: {Error}", ex.Message);
                 return null;
             }
+        }
+
+        private string GenerateRenovationObservationsForMapper(
+            string polizaAnteriorNumero,
+            int polizaAnteriorId,
+            int cuotas,           // ✅ int en lugar de decimal
+            int montoTotal,       // ✅ int en lugar de decimal  
+            string fechaDesde,
+            string? observacionesUsuario = null,
+            string? comentariosUsuario = null)
+        {
+            var observations = new List<string>();
+
+            // Header simplificado
+            observations.Add($"Renovacion de Poliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
+
+            // Cronograma de cuotas
+            if (cuotas > 1 && montoTotal > 0)
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("CRONOGRAMA DE CUOTAS:");
+
+                var valorCuota = Math.Round((decimal)montoTotal / cuotas, 2);
+                var fechaBase = DateTime.TryParse(fechaDesde, out var fechaInicio) ? fechaInicio : DateTime.Now;
+
+                for (int i = 1; i <= cuotas; i++)
+                {
+                    var fechaCuota = fechaBase.AddMonths(i - 1);
+                    var montoCuota = (i == cuotas)
+                        ? (decimal)montoTotal - (valorCuota * (cuotas - 1)) // Última cuota ajusta diferencia
+                        : valorCuota;
+
+                    observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
+                }
+
+                observations.Add($"TOTAL: ${montoTotal:N2} en {cuotas} cuotas");
+            }
+            else if (cuotas == 1)
+            {
+                observations.Add($"Pago contado: ${montoTotal:N2}");
+            }
+
+            // Observaciones del usuario
+            if (!string.IsNullOrEmpty(observacionesUsuario) &&
+                !observacionesUsuario.Contains("Renovación automática"))
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("NOTAS ADICIONALES:");
+                observations.Add(observacionesUsuario);
+            }
+
+            // Comentarios del usuario
+            if (!string.IsNullOrEmpty(comentariosUsuario))
+            {
+                observations.Add(""); // Línea en blanco
+                observations.Add("COMENTARIOS:");
+                observations.Add(comentariosUsuario);
+            }
+
+            return string.Join("\n", observations);
         }
 
         #endregion

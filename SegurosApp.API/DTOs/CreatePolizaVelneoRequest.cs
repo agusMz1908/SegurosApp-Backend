@@ -10,7 +10,7 @@
         public string? StartDateOverride { get; set; }
         public string? EndDateOverride { get; set; }
         public decimal? PremiumOverride { get; set; }
-        public decimal? TotalOverride { get; set; }  // ✅ NUEVO
+        public decimal? TotalOverride { get; set; }  
 
         // ✅ OVERRIDES DEL VEHÍCULO
         public string? VehicleBrandOverride { get; set; }
@@ -33,6 +33,7 @@
         public int? BrokerIdOverride { get; set; }          // Corredor → corrnom
         public int? CurrencyIdOverride { get; set; }        // Moneda principal → moncod  
         public int? PaymentCurrencyIdOverride { get; set; }
+        public string? PolicyNumber { get; set; }
 
         // ✅ OVERRIDES DE CLIENTE - NUEVOS
         public string? ClientNameOverride { get; set; }
