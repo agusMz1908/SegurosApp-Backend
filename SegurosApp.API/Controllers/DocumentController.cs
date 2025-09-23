@@ -23,28 +23,34 @@ namespace SegurosApp.API.Controllers
     {
         private readonly IAzureDocumentService _azureDocumentService;
         private readonly IVelneoMasterDataService _masterDataService;
-        private readonly PolizaMapperService _polizaMapperService;
+        private readonly PolizaMappingService _polizaMappingService;
         private readonly IVelneoMetricsService _metricsService;
         private readonly AppDbContext _context;
+        private readonly NewPolizaService _newPolizaService;
         private readonly RenewPolizaService _renewPolizaService;
+        private readonly ModifyPolizaService _modifyPolizaService;
         private readonly ILogger<DocumentController> _logger;
 
         public DocumentController(
             IAzureDocumentService azureDocumentService,
             IVelneoMasterDataService masterDataService,
-            PolizaMapperService polizaMapperService,
+            PolizaMappingService polizaMappingService,   
             IVelneoMetricsService metricsService,
             AppDbContext context,
             ILogger<DocumentController> logger,
-            RenewPolizaService renewPolizaService)
+            NewPolizaService newPolizaService,
+            RenewPolizaService renewPolizaService,
+            ModifyPolizaService modifyPolizaService)
         {
             _azureDocumentService = azureDocumentService;
             _masterDataService = masterDataService;
-            _polizaMapperService = polizaMapperService;
+            _polizaMappingService = polizaMappingService;    
             _metricsService = metricsService;
             _context = context;
             _logger = logger;
+            _newPolizaService = newPolizaService;
             _renewPolizaService = renewPolizaService;
+            _modifyPolizaService = modifyPolizaService;
         }
 
         [HttpPost("upload-with-context")]
@@ -116,7 +122,7 @@ namespace SegurosApp.API.Controllers
 
                 await SaveContextToScanAsync(scanResult.ScanId, clienteId, companiaId, seccionId, notes);
 
-                var polizaMapping = await _polizaMapperService.MapToPolizaWithContextAsync(
+                var polizaMapping = await _polizaMappingService.MapToPolizaWithContextAsync(
                     scanResult.ExtractedData,
                     new PreSelectionContext
                     {
@@ -376,8 +382,7 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                // 🔍 NUEVA VALIDACIÓN: Verificar si la póliza ya existe
-                var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value, overrides);
+                var velneoRequest = await _newPolizaService.CreateVelneoRequestFromScanAsync(scanId, userId.Value, overrides);
                 var existingPolizaValidation = await ValidatePolizaNotExistsAsync(velneoRequest, scanId);
 
                 if (!existingPolizaValidation.IsValid)
@@ -641,7 +646,10 @@ namespace SegurosApp.API.Controllers
                 }
 
                 _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
-                var velneoRequest = await _polizaMapperService.CreateVelneoRequestFromScanAsync(scanId, userId.Value);
+                var velneoRequest = await _modifyPolizaService.CreateVelneoRequestFromModifyAsync(scanId, userId.Value, request);
+                _logger.LogInformation("=== DEBUG CONTROLLER === Observaciones generadas: {Observaciones}", velneoRequest.observaciones);
+                _logger.LogInformation("=== DEBUG CONTROLLER === Cuotas en request: {Cuotas}, Monto: {Monto}", velneoRequest.concuo, velneoRequest.contot);
+
                 _logger.LogInformation("Request Velneo creado - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
                     velneoRequest.clinro, velneoRequest.comcod, velneoRequest.conpol);
 

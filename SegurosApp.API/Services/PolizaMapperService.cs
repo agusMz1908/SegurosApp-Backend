@@ -179,7 +179,7 @@ namespace SegurosApp.API.Services
                 corrnom = overrides?.BrokerIdOverride ?? ExtractCorredorId(normalizedData),
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = extractedCuotas,
-                moncod = overrides?.CurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
+                moncod = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
                 conviamon = overrides?.PaymentCurrencyIdOverride ?? ExtractCurrencyCode(normalizedData),
                 congesti = "1",
                 congeses = "1",

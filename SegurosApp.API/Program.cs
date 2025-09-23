@@ -63,16 +63,17 @@ builder.Services.AddScoped<PricingService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<DocumentFieldParser>();
 builder.Services.AddScoped<IAzureModelMappingService, AzureModelMappingService>();
-builder.Services.AddScoped<PolizaMapperService>();
+builder.Services.AddScoped<PolizaMappingService>();
 builder.Services.AddScoped<IPdfService, PdfService>();
 builder.Services.AddScoped<IVelneoMetricsService, VelneoMetricsService>();
 builder.Services.AddScoped<BillingService>();
 builder.Services.AddScoped<PricingService>();
 builder.Services.AddCompanyMappingServices();
-
 builder.Services.AddScoped<PolizaDataExtractor>();
 builder.Services.AddScoped<ObservationsGenerator>();
+builder.Services.AddScoped<NewPolizaService>();
 builder.Services.AddScoped<RenewPolizaService>();
+builder.Services.AddScoped<ModifyPolizaService>();
 
 builder.Services.AddCors(options =>
 {

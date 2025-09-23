@@ -605,11 +605,5 @@ namespace SegurosApp.API.Services.Poliza
         public DateTime? FechaVencimiento { get; set; }
     }
 
-    public class ValidationException : Exception
-    {
-        public ValidationException(string message) : base(message) { }
-        public ValidationException(string message, Exception innerException) : base(message, innerException) { }
-    }
-
     #endregion
 }

@@ -127,40 +127,39 @@ namespace SegurosApp.API.Services.Poliza.Shared
         /// Genera observaciones para cambio/modificación de póliza
         /// </summary>
         public string GenerateModifyPolizaObservations(
-            string polizaAnteriorNumero,
-            int polizaAnteriorId,
-            string tipoCambio,
-            int cuotas,
-            int montoTotal,
-            string fechaDesde,
-            string? observacionesUsuario = null,
-            string? comentariosUsuario = null,
-            Dictionary<string, string>? cambiosDetectados = null)
+                    string polizaAnteriorNumero,
+                    int polizaAnteriorId,
+                    string tipoCambio,
+                    int cuotas,
+                    int montoTotal,
+                    string fechaDesde,
+                    string? observacionesUsuario = null,
+                    string? comentariosUsuario = null,
+                    Dictionary<string, string>? cambiosDetectados = null)
         {
             var observations = new List<string>();
 
-            // Header
-            observations.Add($"Cambio de Póliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
+            // ✅ HEADER PRINCIPAL
+            observations.Add($"Cambio de Poliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
             observations.Add($"Tipo de cambio: {tipoCambio}");
-            observations.Add("");
 
-            // Detalles de los cambios detectados
-            if (cambiosDetectados != null && cambiosDetectados.Any())
+            // ✅ CAMBIOS DETECTADOS
+            if (cambiosDetectados != null && cambiosDetectados.Count > 0)
             {
-                observations.Add("CAMBIOS DETECTADOS:");
+                observations.Add(""); // Línea en blanco
+                observations.Add("CAMBIOS REALIZADOS:");
+
                 foreach (var cambio in cambiosDetectados)
                 {
-                    observations.Add($"• {cambio.Key}: {cambio.Value}");
+                    observations.Add($"- {cambio.Key}: {cambio.Value}");
                 }
-                observations.Add("");
             }
 
-            // Cronograma de cuotas si aplica
+            // ✅ CRONOGRAMA DE CUOTAS
             if (cuotas > 1 && montoTotal > 0)
             {
-                observations.Add("NUEVO CRONOGRAMA DE CUOTAS:");
-                observations.Add($"Total: ${montoTotal:N2} en {cuotas} cuotas");
-                observations.Add("");
+                observations.Add(""); // Línea en blanco
+                observations.Add("CRONOGRAMA DE CUOTAS:");
 
                 var valorCuota = Math.Round((decimal)montoTotal / cuotas, 2);
                 var fechaBase = DateTime.TryParse(fechaDesde, out var fechaInicio) ? fechaInicio : DateTime.Now;
@@ -169,33 +168,34 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 {
                     var fechaCuota = fechaBase.AddMonths(i - 1);
                     var montoCuota = (i == cuotas)
-                        ? (decimal)montoTotal - (valorCuota * (cuotas - 1))
+                        ? (decimal)montoTotal - (valorCuota * (cuotas - 1)) // Última cuota ajusta diferencia
                         : valorCuota;
 
                     observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
                 }
 
-                observations.Add("");
-                observations.Add("=== FIN CRONOGRAMA ===");
+                observations.Add($"TOTAL: ${montoTotal:N2} en {cuotas} cuotas");
             }
-
-            // Observaciones del usuario
-            if (!string.IsNullOrEmpty(observacionesUsuario))
+            else if (cuotas == 1)
             {
-                observations.Add("");
-                observations.Add("NOTAS ADICIONALES:");
-                observations.Add(observacionesUsuario);
+                observations.Add($"Pago contado: ${montoTotal:N2}");
             }
 
-            // Comentarios del usuario
-            if (!string.IsNullOrEmpty(comentariosUsuario))
+            // ✅ UNIFICAR OBSERVACIONES Y COMENTARIOS DEL USUARIO
+            var notasUsuario = CombineUserNotes(observacionesUsuario, comentariosUsuario);
+            if (!string.IsNullOrEmpty(notasUsuario))
             {
-                observations.Add("");
-                observations.Add("COMENTARIOS DEL USUARIO:");
-                observations.Add(comentariosUsuario);
+                observations.Add(""); // Línea en blanco
+                observations.Add("OBSERVACIONES ADICIONALES:");
+                observations.Add(notasUsuario);
             }
 
-            return string.Join("\n", observations);
+            var result = string.Join("\n", observations);
+
+            _logger.LogInformation("Observaciones generadas para cambio - Póliza: {PolizaAnteriorNumero}, Tipo: {TipoCambio}, Caracteres: {Length}",
+                polizaAnteriorNumero, tipoCambio, result.Length);
+
+            return result;
         }
 
         /// <summary>
