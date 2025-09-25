@@ -31,9 +31,6 @@ namespace SegurosApp.API.Services.Poliza
             _logger = logger;
         }
 
-        /// <summary>
-        /// Crea un request de Velneo para renovación de póliza
-        /// </summary>
         public async Task<VelneoPolizaRequest> CreateVelneoRequestFromRenewAsync(
             int scanId,
             int userId,
@@ -43,30 +40,17 @@ namespace SegurosApp.API.Services.Poliza
             _logger.LogInformation("Creando request Velneo para renovación - Scan: {ScanId}, Usuario: {UserId}, PolizaAnterior: {PolizaAnteriorId}",
                 scanId, userId, renewRequest.PolizaAnteriorId);
 
-            // Obtener el scan
             var scan = await GetScanForRenewal(scanId, userId);
             var extractedData = DeserializeExtractedData(scan.ExtractedData);
             var normalizedData = await NormalizeDataForRenewal(extractedData, scan.CompaniaId);
-
-            // Obtener contexto del scan
             var context = GetRenewalContext(scan);
-
-            // Obtener información del contexto (cliente, compañía, sección)
             var contextInfo = await GetContextInformation(context);
-
-            // Procesar datos específicos de renovación
             var renewalData = ProcessRenewalSpecificData(renewRequest, normalizedData);
-
-            // Construir el request base
             var request = BuildBaseRenewalRequest(context, contextInfo, renewalData);
-
-            // Aplicar master data del frontend (prioritario)
             await ApplyFrontendMasterDataOverrides(request, renewRequest);
 
-            // Configurar para renovación
             ConfigureForRenewal(request, renewRequest.PolizaAnteriorId, renewalData);
 
-            // Generar observaciones específicas para renovación
             var polizaAnteriorInfo = ExtractPolizaAnteriorInfo(polizaAnterior);
             request.observaciones = _observationsGenerator.GenerateRenewPolizaObservations(
                 polizaAnteriorInfo.NumeroPoliza,
@@ -347,11 +331,10 @@ namespace SegurosApp.API.Services.Poliza
 
         private void ConfigureForRenewal(VelneoPolizaRequest request, int polizaAnteriorId, RenewalSpecificData data)
         {
-            // Configurar como renovación
             request.conpadre = polizaAnteriorId;
-            request.contra = "2"; // Código para renovación
-            request.congeses = "1"; // Estado de gestión activo
-            request.convig = "1"; // Vigente
+            request.contra = "2"; 
+            request.congeses = "1"; 
+            request.convig = "1"; 
 
             _logger.LogInformation("Request configurado para renovación - ConPadre: {ConPadre}, Tipo: Renovación (2)", polizaAnteriorId);
         }

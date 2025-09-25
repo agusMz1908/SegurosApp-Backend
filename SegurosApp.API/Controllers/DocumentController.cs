@@ -728,7 +728,6 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("Iniciando renovación de póliza para scan {ScanId} - Póliza anterior: {PolizaAnteriorId}",
                     scanId, request.PolizaAnteriorId);
 
-                // LOG DE MASTER DATA RECIBIDO DEL FRONTEND
                 _logger.LogInformation("Master data recibido del frontend - Combustible: {Combustible}, Categoría: {Categoria}, Calidad: {Calidad}",
                     request.CombustibleId, request.CategoriaId, request.CalidadId);
 
@@ -785,18 +784,15 @@ namespace SegurosApp.API.Controllers
 
                 _logger.LogInformation("Póliza anterior encontrada: {NumeroPoliza}", polizaAnterior.conpol);
 
-                // ✅ USAR EL NUEVO SERVICIO - Las observaciones ya se generan correctamente dentro
                 var velneoRequest = await _renewPolizaService.CreateVelneoRequestFromRenewAsync(
                     scanId, userId.Value, request, polizaAnterior);
 
                 _logger.LogInformation("Request Velneo creado con master data del frontend - Cliente: {ClienteId}, Compañía: {CompaniaId}, Póliza: {NumeroPoliza}",
                     velneoRequest.clinro, velneoRequest.comcod, velneoRequest.conpol);
 
-                // LOG DETALLADO DE MASTER DATA APLICADO
                 _logger.LogInformation("Master data aplicado en request Velneo - Combustible: {Combustible}, Categoría: {Categoria}, Calidad: {Calidad}, Destino: {Destino}, Departamento: {Departamento}, Tarifa: {Tarifa}",
                     velneoRequest.combustibles, velneoRequest.catdsc, velneoRequest.caldsc, velneoRequest.desdsc, velneoRequest.dptnom, velneoRequest.tarcod);
 
-                // LOG DE LAS OBSERVACIONES GENERADAS
                 _logger.LogInformation("Observaciones generadas por RenewPolizaService: {Observaciones}", velneoRequest.observaciones);
 
                 var result = await _masterDataService.RenewPolizaAsync(
@@ -826,7 +822,6 @@ namespace SegurosApp.API.Controllers
                     _logger.LogInformation("Renovación de póliza completada exitosamente - Scan: {ScanId}, Nueva póliza: {VelneoPolizaId}, Anterior: {PolizaAnteriorId}",
                         scanId, result.VelneoPolizaId, request.PolizaAnteriorId);
 
-                    // LOG DE ÉXITO CON MASTER DATA
                     _logger.LogInformation("Renovación exitosa usando master data del frontend - Combustible final: {Combustible}, Categoría final: {Categoria}",
                         request.CombustibleId ?? "AUTO-DETECTADO", request.CategoriaId ?? "AUTO-DETECTADO");
                 }
@@ -835,37 +830,7 @@ namespace SegurosApp.API.Controllers
                     _logger.LogWarning("Renovación de póliza falló - Scan: {ScanId}, Error: {Message}",
                         scanId, result.Message);
                 }
-
-                // CREAR RESPUESTA USANDO EL MAPPER Y AGREGAR INFORMACIÓN ADICIONAL
                 var apiResponse = RenewPolizaApiResponse.FromVelneoResponse(result, scanId, stopwatch.ElapsedMilliseconds);
-
-                // AGREGAR DEBUG INFO EN DESARROLLO
-                if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
-                {
-                    apiResponse.debugInfo = new Dictionary<string, object>
-                    {
-                        ["masterDataOverrides"] = new
-                        {
-                            combustible = request.CombustibleId,
-                            categoria = request.CategoriaId,
-                            calidad = request.CalidadId,
-                            destino = request.DestinoId,
-                            departamento = request.DepartamentoId,
-                            tarifa = request.TarifaId
-                        },
-                        ["velneoRequestFields"] = new
-                        {
-                            combustibles = velneoRequest.combustibles,
-                            catdsc = velneoRequest.catdsc,
-                            caldsc = velneoRequest.caldsc,
-                            desdsc = velneoRequest.desdsc,
-                            dptnom = velneoRequest.dptnom,
-                            tarcod = velneoRequest.tarcod
-                        },
-                        ["observacionesGeneradas"] = velneoRequest.observaciones
-                    };
-                }
-
                 return Ok(apiResponse);
             }
             catch (Exception ex)

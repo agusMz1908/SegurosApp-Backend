@@ -93,7 +93,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 observations.Add($"Pago contado: ${montoTotal:N2}");
             }
 
-            // ✅ UNIFICAR OBSERVACIONES Y COMENTARIOS EN UNA SOLA SECCIÓN
             var notasUsuario = CombineUserNotes(observacionesUsuario, comentariosUsuario);
             if (!string.IsNullOrEmpty(notasUsuario))
             {
@@ -123,9 +122,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
             return string.Join("\n", notes);
         }
 
-        /// <summary>
-        /// Genera observaciones para cambio/modificación de póliza
-        /// </summary>
         public string GenerateModifyPolizaObservations(
                     string polizaAnteriorNumero,
                     int polizaAnteriorId,
@@ -139,14 +135,12 @@ namespace SegurosApp.API.Services.Poliza.Shared
         {
             var observations = new List<string>();
 
-            // ✅ HEADER PRINCIPAL
             observations.Add($"Cambio de Poliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
             observations.Add($"Tipo de cambio: {tipoCambio}");
 
-            // ✅ CAMBIOS DETECTADOS
             if (cambiosDetectados != null && cambiosDetectados.Count > 0)
             {
-                observations.Add(""); // Línea en blanco
+                observations.Add("");
                 observations.Add("CAMBIOS REALIZADOS:");
 
                 foreach (var cambio in cambiosDetectados)
@@ -155,10 +149,9 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 }
             }
 
-            // ✅ CRONOGRAMA DE CUOTAS
             if (cuotas > 1 && montoTotal > 0)
             {
-                observations.Add(""); // Línea en blanco
+                observations.Add(""); 
                 observations.Add("CRONOGRAMA DE CUOTAS:");
 
                 var valorCuota = Math.Round((decimal)montoTotal / cuotas, 2);
@@ -168,7 +161,7 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 {
                     var fechaCuota = fechaBase.AddMonths(i - 1);
                     var montoCuota = (i == cuotas)
-                        ? (decimal)montoTotal - (valorCuota * (cuotas - 1)) // Última cuota ajusta diferencia
+                        ? (decimal)montoTotal - (valorCuota * (cuotas - 1)) 
                         : valorCuota;
 
                     observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
@@ -181,7 +174,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 observations.Add($"Pago contado: ${montoTotal:N2}");
             }
 
-            // ✅ UNIFICAR OBSERVACIONES Y COMENTARIOS DEL USUARIO
             var notasUsuario = CombineUserNotes(observacionesUsuario, comentariosUsuario);
             if (!string.IsNullOrEmpty(notasUsuario))
             {
