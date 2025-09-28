@@ -12,9 +12,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
             _logger = logger;
         }
 
-        /// <summary>
-        /// Genera observaciones para nueva póliza
-        /// </summary>
         public string GenerateNewPolizaObservations(
             string? userNotes,
             string? userComments,
@@ -39,10 +36,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
 
             return string.Join("\n", parts);
         }
-
-        /// <summary>
-        /// Genera observaciones para renovación de póliza
-        /// </summary>
         public string GenerateRenewPolizaObservations(
             string polizaAnteriorNumero,
             int polizaAnteriorId,
@@ -54,8 +47,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
             string? comentariosUsuario = null)
         {
             var observations = new List<string>();
-
-            // Header
             observations.Add($"Renovación de Póliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
 
             if (fechaVencimientoAnterior.HasValue)
@@ -63,9 +54,7 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 observations.Add($"Vencimiento anterior: {fechaVencimientoAnterior.Value:dd/MM/yyyy}");
             }
 
-            observations.Add(""); // Línea en blanco
-
-            // Cronograma de cuotas
+            observations.Add("");
             if (cuotas > 1 && montoTotal > 0)
             {
                 observations.Add("CRONOGRAMA DE CUOTAS:");
@@ -177,7 +166,7 @@ namespace SegurosApp.API.Services.Poliza.Shared
             var notasUsuario = CombineUserNotes(observacionesUsuario, comentariosUsuario);
             if (!string.IsNullOrEmpty(notasUsuario))
             {
-                observations.Add(""); // Línea en blanco
+                observations.Add(""); 
                 observations.Add("OBSERVACIONES ADICIONALES:");
                 observations.Add(notasUsuario);
             }
@@ -190,9 +179,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
             return result;
         }
 
-        /// <summary>
-        /// Genera cronograma de cuotas usando datos normalizados del escaneo
-        /// </summary>
         private string GenerateInstallmentScheduleFromData(
             int cuotas,
             int montoTotal,
@@ -207,8 +193,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 cronograma.AppendLine();
 
                 bool usedRealData = false;
-
-                // Intentar usar datos reales del escaneo
                 for (int i = 0; i < cuotas; i++)
                 {
                     var fechaKey = $"pago.cuotas[{i}].vencimiento";
@@ -230,13 +214,12 @@ namespace SegurosApp.API.Services.Poliza.Shared
                     }
                 }
 
-                // Si no hay datos reales, generar cronograma calculado
                 if (!usedRealData)
                 {
                     _logger.LogDebug("Generando cronograma calculado para {Cuotas} cuotas de ${MontoTotal}", cuotas, montoTotal);
 
                     var montoCuota = Math.Round((decimal)montoTotal / cuotas, 2);
-                    var fechaBase = DateTime.Now; // Usar fecha base más apropiada según contexto
+                    var fechaBase = DateTime.Now; 
 
                     for (int i = 1; i <= cuotas; i++)
                     {
@@ -256,15 +239,9 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 return "\nError generando cronograma de cuotas.";
             }
         }
-
-        /// <summary>
-        /// Genera observaciones automáticas basadas en los datos escaneados
-        /// </summary>
         public List<string> GenerateAutomaticObservations(Dictionary<string, object> normalizedData)
         {
             var observations = new List<string>();
-
-            // Detectar datos específicos que requieren atención
             if (normalizedData.ContainsKey("vehiculo.matricula"))
             {
                 var matricula = normalizedData["vehiculo.matricula"].ToString();
@@ -274,7 +251,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 }
             }
 
-            // Detectar inconsistencias en fechas
             if (normalizedData.ContainsKey("poliza.vigencia.desde") && normalizedData.ContainsKey("poliza.vigencia.hasta"))
             {
                 var fechaDesde = normalizedData["poliza.vigencia.desde"].ToString();
@@ -288,24 +264,23 @@ namespace SegurosApp.API.Services.Poliza.Shared
                     }
 
                     var duracion = (hasta - desde).Days;
-                    if (duracion > 400) // Más de ~13 meses
+                    if (duracion > 400) 
                     {
                         observations.Add($"NOTA: Vigencia extendida detectada ({duracion} días) - Verificar si es correcto");
                     }
                 }
             }
 
-            // Detectar montos inusuales
             if (normalizedData.ContainsKey("financiero.premio_total"))
             {
                 var premioStr = normalizedData["financiero.premio_total"].ToString();
                 if (decimal.TryParse(premioStr.Replace("$", "").Replace(",", ""), out var premio))
                 {
-                    if (premio > 500000) // Más de $500k
+                    if (premio > 500000) 
                     {
                         observations.Add($"ATENCIÓN: Premio elevado (${premio:N2}) - Verificar monto");
                     }
-                    else if (premio < 1000) // Menos de $1k
+                    else if (premio < 1000) 
                     {
                         observations.Add($"ATENCIÓN: Premio bajo (${premio:N2}) - Verificar monto");
                     }
@@ -314,10 +289,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
 
             return observations;
         }
-
-        /// <summary>
-        /// Combina observaciones automáticas con observaciones del usuario
-        /// </summary>
         public string CombineObservations(
             List<string> automaticObservations,
             string? userNotes,
@@ -325,15 +296,12 @@ namespace SegurosApp.API.Services.Poliza.Shared
             string? additionalContext = null)
         {
             var allObservations = new List<string>();
-
-            // Contexto adicional
             if (!string.IsNullOrEmpty(additionalContext))
             {
                 allObservations.Add(additionalContext);
                 allObservations.Add("");
             }
 
-            // Observaciones automáticas
             if (automaticObservations.Any())
             {
                 allObservations.Add("OBSERVACIONES AUTOMÁTICAS:");
@@ -341,7 +309,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 allObservations.Add("");
             }
 
-            // Notas del usuario
             if (!string.IsNullOrEmpty(userNotes))
             {
                 allObservations.Add("NOTAS DEL USUARIO:");
@@ -349,7 +316,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                 allObservations.Add("");
             }
 
-            // Comentarios del usuario
             if (!string.IsNullOrEmpty(userComments))
             {
                 allObservations.Add("COMENTARIOS:");

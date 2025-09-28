@@ -367,7 +367,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                     .Replace("\r", " ")
                     .Trim();
 
-                // Formato uruguayo: 1.234.567,89
                 var uruguayanMatch = Regex.Match(cleanValue, @"(\d{1,3}(?:\.\d{3})*,\d{2})");
                 if (uruguayanMatch.Success)
                 {
@@ -382,7 +381,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                     }
                 }
 
-                // Formato estándar: 1,234,567.89
                 var standardMatch = Regex.Match(cleanValue, @"(\d{1,3}(?:,\d{3})*\.\d{2})");
                 if (standardMatch.Success)
                 {
@@ -395,7 +393,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
                     }
                 }
 
-                // Cualquier número
                 var anyNumberMatch = Regex.Match(cleanValue, @"(\d+(?:[.,]\d+)?)");
                 if (anyNumberMatch.Success)
                 {

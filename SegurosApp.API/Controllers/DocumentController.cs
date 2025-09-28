@@ -347,7 +347,7 @@ namespace SegurosApp.API.Controllers
         [ProducesResponseType(typeof(CreatePolizaVelneoResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(404)]
-        [ProducesResponseType(409)] // Conflict - póliza ya existe
+        [ProducesResponseType(409)] 
         public async Task<ActionResult<CreatePolizaVelneoResponse>> CreatePolizaInVelneo(
             int scanId,
             [FromBody] CreatePolizaVelneoRequest? overrides = null)
@@ -411,7 +411,6 @@ namespace SegurosApp.API.Controllers
                     });
                 }
 
-                // ✅ Si llegamos aquí, la póliza no existe, proceder con la creación normal
                 var velneoResult = await _masterDataService.CreatePolizaAsync(velneoRequest);
 
                 await RecordMetricAsync(VelneoOperationType.POLIZA_NUEVA, userId.Value, scanId, velneoResult, stopwatch.ElapsedMilliseconds);
@@ -463,7 +462,6 @@ namespace SegurosApp.API.Controllers
                 _logger.LogInformation("Validando que póliza {NumeroPoliza} no existe en compañía {CompaniaId}",
                     request.conpol, request.comcod);
 
-                // Buscar póliza existente por número y compañía
                 var existingPoliza = await _masterDataService.FindPolizaByNumberAndCompanyAsync(
                     request.conpol, request.comcod);
 
@@ -480,7 +478,6 @@ namespace SegurosApp.API.Controllers
                     };
                 }
 
-                // Póliza existe - determinar el tipo de conflicto y sugerencias
                 var companias = await _masterDataService.GetCompaniasAsync();
                 var compania = companias.FirstOrDefault(c => c.id == request.comcod);
                 var companiaName = compania?.comnom ?? "Desconocida";
@@ -488,8 +485,7 @@ namespace SegurosApp.API.Controllers
                 var suggestedActions = new List<string>();
                 var errorMessage = "";
 
-                // Analizar el estado de la póliza existente
-                if (existingPoliza.EsVigente) // Usar la propiedad computada de ContratoItem
+                if (existingPoliza.EsVigente)
                 {
                     errorMessage = $"Ya existe una póliza vigente con número {request.conpol} en {companiaName}";
                     suggestedActions.AddRange(new[]
@@ -500,7 +496,7 @@ namespace SegurosApp.API.Controllers
                 "Revisar si debe ser una renovación de la póliza existente"
             });
                 }
-                else if (existingPoliza.conestado == "C" || existingPoliza.conestado == "A") // Cancelada o Anulada
+                else if (existingPoliza.conestado == "C" || existingPoliza.conestado == "A") 
                 {
                     errorMessage = $"Existe una póliza {existingPoliza.EstadoDisplay.ToLower()} con número {request.conpol} en {companiaName}";
                     suggestedActions.AddRange(new[]
@@ -524,8 +520,6 @@ namespace SegurosApp.API.Controllers
 
                 _logger.LogWarning("❌ Póliza duplicada: {NumeroPoliza} existe con ID {ExistingId} - Estado: {Estado}",
                     request.conpol, existingPoliza.id, existingPoliza.conestado);
-
-                // Obtener información detallada de la póliza existente (opcional)
                 ExistingPolizaInfo? existingPolizaDetails = null;
                 try
                 {
@@ -551,10 +545,9 @@ namespace SegurosApp.API.Controllers
             {
                 _logger.LogError(ex, "Error validando existencia de póliza {NumeroPoliza}", request.conpol);
 
-                // En caso de error de conectividad, permitir continuar pero con warning
                 return new PolizaExistsValidationResult
                 {
-                    IsValid = true, // Permitir continuar si no podemos validar
+                    IsValid = true,
                     ErrorMessage = $"No se pudo validar la existencia de la póliza: {ex.Message}",
                     ExistingPolizaId = null,
                     ExistingPolizaStatus = null,

@@ -220,13 +220,10 @@ namespace SegurosApp.API.Services
             var extractedData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
             var normalizedData = await NormalizeExtractedDataAsync(extractedData, scan.CompaniaId);
-
-            // ✅ USAR CONTEXTO DEL SCAN (heredado de la selección de póliza)
             var contextClienteId = scan.ClienteId ?? throw new ArgumentException("ClienteId requerido para renovación");
             var contextCompaniaId = scan.CompaniaId ?? throw new ArgumentException("CompaniaId requerido para renovación");
             var contextSeccionId = scan.SeccionId ?? throw new ArgumentException("SeccionId requerido para renovación");
 
-            // ✅ OBTENER INFORMACIÓN DEL CONTEXTO (igual que el método original)
             ClienteItem? clienteInfo = null;
             CompaniaItem? companiaInfo = null;
             SeccionItem? seccionInfo = null;
@@ -246,48 +243,35 @@ namespace SegurosApp.API.Services
                 _logger.LogWarning("Error obteniendo información de maestros para renovación: {Error}", ex.Message);
             }
 
-            // ✅ PROCESAR FECHAS (igual que el método original)
             var rawStartDate = GetStringValueWithRenewOverride(renewRequest.FechaDesde, ExtractStartDate(normalizedData), "FechaInicio");
             var rawEndDate = GetStringValueWithRenewOverride(renewRequest.FechaHasta, ExtractEndDate(normalizedData), "FechaFin");
             var formattedStartDate = ConvertToVelneoDateFormat(rawStartDate);
             var formattedEndDate = ConvertToVelneoDateFormat(rawEndDate);
-
-            // ✅ PROCESAR MONTOS
             var extractedPremium = renewRequest.Premio ?? ExtractPremium(normalizedData);
             var extractedTotal = renewRequest.MontoTotal ?? ExtractTotalAmount(normalizedData);
             var extractedCuotas = renewRequest.CantidadCuotas ?? ExtractInstallmentCount(normalizedData);
             var extractedPaymentMethod = ExtractPaymentMethod(normalizedData);
 
-            // ✅ CREAR REQUEST CON LA MISMA ESTRUCTURA QUE EL MÉTODO ORIGINAL
             var request = new VelneoPolizaRequest
             {
-                // IDs principales (del contexto del scan)
                 clinro = contextClienteId,
                 comcod = contextCompaniaId,
                 seccod = contextSeccionId,
-
-                // Datos de póliza con overrides del frontend
                 conpol = renewRequest.NumeroPoliza ?? ExtractPolicyNumber(normalizedData),
                 conend = ExtractEndorsement(normalizedData),
                 confchdes = formattedStartDate,
                 confchhas = formattedEndDate,
                 conpremio = (int)Math.Round(extractedPremium),
                 contot = (int)Math.Round(extractedTotal),
-
-                // Datos del vehículo con overrides del frontend
                 conmaraut = renewRequest.VehiculoMarca ?? ExtractVehicleBrand(normalizedData),
                 conmodaut = renewRequest.VehiculoModelo ?? ExtractVehicleModel(normalizedData),
                 conanioaut = renewRequest.VehiculoAno ?? ExtractVehicleYear(normalizedData),
                 conmotor = renewRequest.VehiculoMotor ?? ExtractMotorNumber(normalizedData),
                 conchasis = renewRequest.VehiculoChasis ?? ExtractChassisNumber(normalizedData),
                 conmataut = renewRequest.VehiculoPatente ?? ExtractVehiclePlate(normalizedData),
-
-                // Datos del cliente
                 clinom = clienteInfo?.clinom ?? "",
                 condom = clienteInfo?.clidir ?? ExtractClientAddress(normalizedData),
                 clinro1 = ExtractBeneficiaryId(normalizedData),
-
-                // ✅ MASTER DATA CON OVERRIDES DEL FRONTEND (PRIORITARIOS)
                 dptnom = await GetIntValueWithRenewOverrideAsync(renewRequest.DepartamentoId, () => FindDepartmentIdAsync(normalizedData)),
                 combustibles = await GetStringValueWithRenewOverrideAsync(renewRequest.CombustibleId, () => FindFuelCodeAsync(normalizedData)),
                 desdsc = await GetIntValueWithRenewOverrideAsync(renewRequest.DestinoId, () => FindDestinationIdAsync(normalizedData)),
@@ -295,24 +279,16 @@ namespace SegurosApp.API.Services
                 caldsc = await GetIntValueWithRenewOverrideAsync(renewRequest.CalidadId, () => FindQualityIdAsync(normalizedData)),
                 tarcod = await GetIntValueWithRenewOverrideAsync(renewRequest.TarifaId, () => FindTariffIdAsync(normalizedData)),
                 corrnom = GetIntValueWithRenewOverride(renewRequest.CorredorId, ExtractCorredorId(normalizedData)),
-
-                // Condiciones de pago
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = extractedCuotas,
                 moncod = GetIntValueWithRenewOverride(renewRequest.MonedaId, ExtractCurrencyCode(normalizedData)),
                 conviamon = GetIntValueWithRenewOverride(renewRequest.MonedaId, ExtractCurrencyCode(normalizedData)),
-
-                // Estados (igual que el método original)
                 congesti = "1",
                 congeses = "1",
                 contra = "1",
                 convig = "1",
-
-                // Datos adicionales
                 com_alias = companiaInfo?.comnom ?? "",
                 ramo = seccionInfo?.seccion ?? "",
-
-                // Metadatos
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = scanId,
@@ -507,8 +483,6 @@ namespace SegurosApp.API.Services
         private async Task<Dictionary<string, object>> NormalizeExtractedDataAsync(Dictionary<string, object> extractedData, int? companiaId = null)
         {
             var normalized = new Dictionary<string, object>(extractedData);
-
-            // ✅ NUEVO: Usar mappers específicos si está habilitado
             if (companiaId.HasValue)
             {
                 try
@@ -524,11 +498,9 @@ namespace SegurosApp.API.Services
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Error en normalización mejorada, usando método legacy");
-                    // Fallback al método actual
                 }
             }
 
-            // 🔄 LEGACY: Método actual como fallback
             if (companiaId.HasValue)
             {
                 switch (companiaId.Value)
@@ -1719,34 +1691,6 @@ namespace SegurosApp.API.Services
             };
             return ExtractDateFromFields(data, possibleFields);
         }
-
-        private decimal ExtractFirstInstallmentValue(Dictionary<string, object> data)
-        {
-            var possibleFields = new[] {
-                "pago.prima_cuota[1]",       
-                "pago.cuotas[0].prima",     
-                "pago.primera_cuota",        
-                "cuota.valor",              
-                "cuota.monto"               
-            };
-
-            foreach (var field in possibleFields)
-            {
-                if (TryGetValue(data, field, out var value))
-                {
-                    var cleanValue = CleanCurrencyValue(value);
-                    if (decimal.TryParse(cleanValue, NumberStyles.Currency, CultureInfo.InvariantCulture, out var amount))
-                    {
-                        _logger.LogDebug("Valor primera cuota encontrado en {Field}: {Value}", field, amount);
-                        return amount;
-                    }
-                }
-            }
-
-            _logger.LogWarning("No se pudo extraer valor de primera cuota");
-            return 0m;
-        }
-
         private string CleanCurrencyValue(string input)
         {
             if (string.IsNullOrEmpty(input)) return "0";
@@ -2237,9 +2181,6 @@ namespace SegurosApp.API.Services
             return extractedValue ?? "";
         }
 
-        /// <summary>
-        /// Obtiene int con override del frontend
-        /// </summary>
         private int GetIntValueWithRenewOverride(string? frontendValue, int extractedValue)
         {
             if (!string.IsNullOrEmpty(frontendValue) && int.TryParse(frontendValue, out var parsedValue))
@@ -2250,9 +2191,6 @@ namespace SegurosApp.API.Services
             return extractedValue;
         }
 
-        /// <summary>
-        /// Obtiene string con override del frontend de forma async
-        /// </summary>
         private async Task<string> GetStringValueWithRenewOverrideAsync(string? frontendValue, Func<Task<string>> extractFunc)
         {
             if (!string.IsNullOrEmpty(frontendValue))
@@ -2262,10 +2200,6 @@ namespace SegurosApp.API.Services
             }
             return await extractFunc();
         }
-
-        /// <summary>
-        /// Obtiene int con override del frontend de forma async
-        /// </summary>
         private async Task<int> GetIntValueWithRenewOverrideAsync(string? frontendValue, Func<Task<int>> extractFunc)
         {
             if (!string.IsNullOrEmpty(frontendValue) && int.TryParse(frontendValue, out var parsedValue))
@@ -2295,90 +2229,6 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("RENOVACIÓN - Sin overrides de master data, usando mapeo automático");
             }
-        }
-
-        private string? ExtractPolizaNumber(object? polizaAnterior)
-        {
-            if (polizaAnterior == null) return null;
-
-            try
-            {
-                // Intentar acceder a la propiedad 'conpol' por reflexión
-                var type = polizaAnterior.GetType();
-                var property = type.GetProperty("conpol");
-
-                if (property != null)
-                {
-                    return property.GetValue(polizaAnterior)?.ToString();
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Error extrayendo número de póliza anterior: {Error}", ex.Message);
-                return null;
-            }
-        }
-
-        private string GenerateRenovationObservationsForMapper(
-            string polizaAnteriorNumero,
-            int polizaAnteriorId,
-            int cuotas,           // ✅ int en lugar de decimal
-            int montoTotal,       // ✅ int en lugar de decimal  
-            string fechaDesde,
-            string? observacionesUsuario = null,
-            string? comentariosUsuario = null)
-        {
-            var observations = new List<string>();
-
-            // Header simplificado
-            observations.Add($"Renovacion de Poliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
-
-            // Cronograma de cuotas
-            if (cuotas > 1 && montoTotal > 0)
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add("CRONOGRAMA DE CUOTAS:");
-
-                var valorCuota = Math.Round((decimal)montoTotal / cuotas, 2);
-                var fechaBase = DateTime.TryParse(fechaDesde, out var fechaInicio) ? fechaInicio : DateTime.Now;
-
-                for (int i = 1; i <= cuotas; i++)
-                {
-                    var fechaCuota = fechaBase.AddMonths(i - 1);
-                    var montoCuota = (i == cuotas)
-                        ? (decimal)montoTotal - (valorCuota * (cuotas - 1)) // Última cuota ajusta diferencia
-                        : valorCuota;
-
-                    observations.Add($"Cuota {i:00}: {fechaCuota:dd/MM/yyyy} - ${montoCuota:N2}");
-                }
-
-                observations.Add($"TOTAL: ${montoTotal:N2} en {cuotas} cuotas");
-            }
-            else if (cuotas == 1)
-            {
-                observations.Add($"Pago contado: ${montoTotal:N2}");
-            }
-
-            // Observaciones del usuario
-            if (!string.IsNullOrEmpty(observacionesUsuario) &&
-                !observacionesUsuario.Contains("Renovación automática"))
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add("NOTAS ADICIONALES:");
-                observations.Add(observacionesUsuario);
-            }
-
-            // Comentarios del usuario
-            if (!string.IsNullOrEmpty(comentariosUsuario))
-            {
-                observations.Add(""); // Línea en blanco
-                observations.Add("COMENTARIOS:");
-                observations.Add(comentariosUsuario);
-            }
-
-            return string.Join("\n", observations);
         }
 
         #endregion

@@ -68,9 +68,6 @@ namespace SegurosApp.API.Services.Poliza
             return request;
         }
 
-        /// <summary>
-        /// Valida los datos necesarios para renovación
-        /// </summary>
         public async Task<RenewalValidationResult> ValidateRenewalDataAsync(
             int scanId,
             int userId,
@@ -80,7 +77,6 @@ namespace SegurosApp.API.Services.Poliza
 
             try
             {
-                // Validar que existe el scan
                 var scan = await _context.DocumentScans
                     .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
 
@@ -90,7 +86,6 @@ namespace SegurosApp.API.Services.Poliza
                     return result;
                 }
 
-                // Validar póliza anterior
                 var polizaAnterior = await _masterDataService.GetPolizaDetalleAsync(renewRequest.PolizaAnteriorId);
                 if (polizaAnterior == null)
                 {
@@ -98,14 +93,12 @@ namespace SegurosApp.API.Services.Poliza
                     return result;
                 }
 
-                // Validar contexto del scan
                 if (!scan.ClienteId.HasValue || !scan.CompaniaId.HasValue || !scan.SeccionId.HasValue)
                 {
                     result.AddError("El scan no tiene contexto de cliente, compañía o sección");
                     return result;
                 }
 
-                // Validar fechas de renovación
                 if (renewRequest.ValidarVencimiento)
                 {
                     var dateValidation = ValidateRenewalDates(polizaAnterior, renewRequest);
@@ -116,7 +109,6 @@ namespace SegurosApp.API.Services.Poliza
                     }
                 }
 
-                // Validar datos financieros
                 if (renewRequest.Premio.HasValue && renewRequest.Premio.Value <= 0)
                 {
                     result.AddWarning("Premio especificado es menor o igual a cero");
@@ -127,7 +119,6 @@ namespace SegurosApp.API.Services.Poliza
                     result.AddWarning("Monto total especificado es menor o igual a cero");
                 }
 
-                // Validar cuotas
                 if (renewRequest.CantidadCuotas.HasValue &&
                     (renewRequest.CantidadCuotas.Value < 1 || renewRequest.CantidadCuotas.Value > 60))
                 {
@@ -175,7 +166,6 @@ namespace SegurosApp.API.Services.Poliza
             Dictionary<string, object> extractedData,
             int? companiaId)
         {
-            // Por ahora usar normalización básica, se puede extender específicamente para renovaciones
             return extractedData;
         }
 
@@ -219,7 +209,6 @@ namespace SegurosApp.API.Services.Poliza
         {
             var data = new RenewalSpecificData();
 
-            // Fechas (prioritizar frontend, fallback a extraído)
             data.FechaDesde = GetStringValueWithRenewOverride(
                 renewRequest.FechaDesde,
                 _dataExtractor.ExtractStartDate(normalizedData),
@@ -230,20 +219,15 @@ namespace SegurosApp.API.Services.Poliza
                 _dataExtractor.ExtractEndDate(normalizedData),
                 "FechaFin");
 
-            // Montos (prioritizar frontend, fallback a extraído)
             data.Premio = renewRequest.Premio ?? _dataExtractor.ExtractPremium(normalizedData);
             data.MontoTotal = renewRequest.MontoTotal ?? _dataExtractor.ExtractTotalAmount(normalizedData);
             data.CantidadCuotas = renewRequest.CantidadCuotas ?? _dataExtractor.ExtractInstallmentCount(normalizedData);
-
-            // Datos del vehículo (prioritizar frontend, fallback a extraído)
             data.VehiculoMarca = renewRequest.VehiculoMarca ?? _dataExtractor.ExtractVehicleBrand(normalizedData);
             data.VehiculoModelo = renewRequest.VehiculoModelo ?? _dataExtractor.ExtractVehicleModel(normalizedData);
             data.VehiculoAno = renewRequest.VehiculoAno ?? _dataExtractor.ExtractVehicleYear(normalizedData);
             data.VehiculoMotor = renewRequest.VehiculoMotor ?? _dataExtractor.ExtractMotorNumber(normalizedData);
             data.VehiculoChasis = renewRequest.VehiculoChasis ?? _dataExtractor.ExtractChassisNumber(normalizedData);
             data.VehiculoPatente = renewRequest.VehiculoPatente ?? _dataExtractor.ExtractVehiclePlate(normalizedData);
-
-            // Número de póliza
             data.NumeroPoliza = renewRequest.NumeroPoliza ?? _dataExtractor.ExtractPolicyNumber(normalizedData);
 
             return data;
@@ -259,53 +243,38 @@ namespace SegurosApp.API.Services.Poliza
 
             return new VelneoPolizaRequest
             {
-                // IDs principales
                 clinro = context.ClienteId,
                 comcod = context.CompaniaId,
                 seccod = context.SeccionId,
-
-                // Datos de póliza
                 conpol = data.NumeroPoliza,
                 conend = _dataExtractor.ExtractEndorsement(new Dictionary<string, object>()),
                 confchdes = formattedStartDate,
                 confchhas = formattedEndDate,
                 conpremio = (int)Math.Round(data.Premio),
                 contot = (int)Math.Round(data.MontoTotal),
-
-                // Datos del vehículo
                 conmaraut = data.VehiculoMarca,
                 conmodaut = data.VehiculoModelo,
                 conanioaut = data.VehiculoAno,
                 conmotor = data.VehiculoMotor,
                 conchasis = data.VehiculoChasis,
                 conmataut = data.VehiculoPatente,
-
-                // Datos del cliente
                 clinom = contextInfo.Cliente?.clinom ?? "",
                 condom = contextInfo.Cliente?.clidir ?? "",
-                clinro1 = 0, // Beneficiario
-
-                // Condiciones de pago
-                consta = "1", // Método de pago por defecto
+                clinro1 = 0, 
+                consta = "1", 
                 concuo = data.CantidadCuotas,
-                moncod = 1, // Moneda por defecto (UYU)
+                moncod = 1, 
                 conviamon = 1,
-
-                // Estados por defecto
                 congesti = "1",
                 congeses = "1",
                 contra = "1",
                 convig = "1",
-
-                // Información adicional
                 com_alias = contextInfo.Compania?.comnom ?? "",
                 ramo = contextInfo.Seccion?.seccion ?? "",
-
-                // Metadatos
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = context.ScanId,
-                conpadre = 0 // Se establecerá en ConfigureForRenewal
+                conpadre = 0 
             };
         }
 
@@ -314,7 +283,6 @@ namespace SegurosApp.API.Services.Poliza
             _logger.LogInformation("Aplicando overrides de master data del frontend - Combustible: {Combustible}, Categoría: {Categoria}",
                 renewRequest.CombustibleId, renewRequest.CategoriaId);
 
-            // Master data con prioridad al frontend
             request.dptnom = await GetIntValueWithRenewOverrideAsync(renewRequest.DepartamentoId, () => Task.FromResult(1));
             request.combustibles = await GetStringValueWithRenewOverrideAsync(renewRequest.CombustibleId, () => Task.FromResult("1"));
             request.desdsc = await GetIntValueWithRenewOverrideAsync(renewRequest.DestinoId, () => Task.FromResult(1));
@@ -373,7 +341,6 @@ namespace SegurosApp.API.Services.Poliza
 
             try
             {
-                // Extraer fecha de vencimiento de la póliza anterior
                 var type = polizaAnterior.GetType();
                 var fechaHastaProperty = type.GetProperty("confchhas");
                 var fechaHastaStr = fechaHastaProperty?.GetValue(polizaAnterior)?.ToString();
@@ -400,14 +367,13 @@ namespace SegurosApp.API.Services.Poliza
                 else
                 {
                     _logger.LogWarning("No se pudo parsear fecha de vencimiento de póliza anterior: {FechaStr}", fechaHastaStr);
-                    // En caso de no poder validar la fecha, permitir continuar
                     result.IsValid = true;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error validando fechas de renovación");
-                result.IsValid = true; // Permitir continuar en caso de error
+                result.IsValid = true; 
             }
 
             return result;

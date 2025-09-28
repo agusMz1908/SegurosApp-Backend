@@ -4,10 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace SegurosApp.API.Services.CompanyMappers
 {
-    /// <summary>
-    /// Mapper para BSE - comportamiento base y estándar.
-    /// Este mapper mantiene la lógica actual que funciona bien para BSE.
-    /// </summary>
     public class BSEFieldMapper : ICompanyFieldMapper
     {
         public readonly ILogger<BSEFieldMapper> _logger;
@@ -69,12 +65,8 @@ namespace SegurosApp.API.Services.CompanyMappers
 
         #region Métodos Auxiliares Protegidos
 
-        /// <summary>
-        /// Mapea campos estándar de BSE al formato interno normalizado
-        /// </summary>
         protected virtual void MapStandardFields(Dictionary<string, object> data)
         {
-            // Campos de póliza
             MapField(data, "poliza.numero", "numero_poliza");
             MapField(data, "poliza.vigencia.desde", "fecha_desde");
             MapField(data, "poliza.vigencia.hasta", "fecha_hasta");
@@ -82,7 +74,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             MapField(data, "financiero.prima_comercial", "prima_comercial");
             MapField(data, "financiero.premio_total", "premio_total");
 
-            // Campos de vehículo
             MapField(data, "vehiculo.marca", "vehiculo_marca");
             MapField(data, "vehiculo.modelo", "vehiculo_modelo");
             MapField(data, "vehiculo.anio", "vehiculo_anio");
@@ -90,14 +81,10 @@ namespace SegurosApp.API.Services.CompanyMappers
             MapField(data, "vehiculo.chasis", "vehiculo_chasis");
             MapField(data, "vehiculo.motor", "vehiculo_motor");
 
-            // Campos de asegurado
             MapField(data, "asegurado.nombre", "asegurado_nombre");
             MapField(data, "asegurado.direccion", "asegurado_direccion");
         }
 
-        /// <summary>
-        /// Obtiene el valor de un campo buscando en múltiples keys posibles
-        /// </summary>
         protected string GetFieldValue(Dictionary<string, object> data, params string[] possibleKeys)
         {
             foreach (var key in possibleKeys)
@@ -110,9 +97,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             return "";
         }
 
-        /// <summary>
-        /// Limpia valores de campo removiendo caracteres no deseados
-        /// </summary>
         protected string CleanFieldValue(string? value)
         {
             if (string.IsNullOrEmpty(value))
@@ -123,9 +107,6 @@ namespace SegurosApp.API.Services.CompanyMappers
                        .Trim();
         }
 
-        /// <summary>
-        /// Mapea un campo de origen a destino si existe
-        /// </summary>
         protected void MapField(Dictionary<string, object> data, string sourceKey, string targetKey)
         {
             if (data.TryGetValue(sourceKey, out var value) && value != null)
@@ -188,7 +169,6 @@ namespace SegurosApp.API.Services.CompanyMappers
 
         protected int MapTarifaByText(string text, List<TarifaItem> tarifas)
         {
-            // Si no hay texto específico, buscar tarifa por defecto
             if (string.IsNullOrEmpty(text))
             {
                 var defaultTarifa = tarifas.FirstOrDefault(t =>
@@ -213,9 +193,6 @@ namespace SegurosApp.API.Services.CompanyMappers
 
         #region Algoritmos de Matching
 
-        /// <summary>
-        /// Encuentra la mejor coincidencia usando mapeos específicos primero, luego similitud
-        /// </summary>
         protected int FindBestMatch(string text, List<IVelneoMasterItem> items, Dictionary<string, string[]> mappings)
         {
             if (string.IsNullOrEmpty(text) || !items.Any())
@@ -224,7 +201,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             var normalizedText = text.ToUpper();
             _logger.LogDebug("Buscando coincidencia para: '{Text}'", text);
 
-            // Buscar por mapeos específicos primero
             foreach (var mapping in mappings)
             {
                 if (mapping.Value.Any(alias => normalizedText.Contains(alias)))
@@ -242,13 +218,9 @@ namespace SegurosApp.API.Services.CompanyMappers
                 }
             }
 
-            // Fallback a búsqueda por similitud
             return FindBestMatchByName(text, items);
         }
 
-        /// <summary>
-        /// Encuentra la mejor coincidencia por similitud de nombre
-        /// </summary>
         protected int FindBestMatchByName(string text, List<IVelneoMasterItem> items)
         {
             if (string.IsNullOrEmpty(text) || !items.Any())
@@ -256,7 +228,6 @@ namespace SegurosApp.API.Services.CompanyMappers
 
             var normalizedText = text.ToUpper().Replace("\n", " ").Trim();
 
-            // Búsqueda exacta primero
             var exact = items.FirstOrDefault(i =>
                 i.Nombre?.ToUpper().Contains(normalizedText) == true ||
                 normalizedText.Contains(i.Nombre?.ToUpper() ?? ""));
@@ -267,7 +238,6 @@ namespace SegurosApp.API.Services.CompanyMappers
                 return exact.Id;
             }
 
-            // Búsqueda por similitud
             var bestMatch = items
                 .Select(i => new { Item = i, Score = CalculateSimilarity(normalizedText, i.Nombre ?? "") })
                 .Where(x => x.Score > 0.5)
@@ -281,15 +251,11 @@ namespace SegurosApp.API.Services.CompanyMappers
                 return bestMatch.Item.Id;
             }
 
-            // Último recurso - primer item
             var fallback = items.First();
             _logger.LogDebug("Usando fallback: '{Text}' -> '{Item}'", text, fallback.Nombre);
             return fallback.Id;
         }
 
-        /// <summary>
-        /// Calcula similitud entre dos strings basado en palabras comunes
-        /// </summary>
         private double CalculateSimilarity(string text1, string text2)
         {
             if (string.IsNullOrEmpty(text1) || string.IsNullOrEmpty(text2))
@@ -298,7 +264,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             text1 = text1.ToUpper();
             text2 = text2.ToUpper();
 
-            // Dividir en palabras y filtrar palabras cortas
             var words1 = text1.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                              .Where(w => w.Length > 2).ToArray();
             var words2 = text2.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -307,7 +272,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             if (!words1.Any() || !words2.Any())
                 return 0;
 
-            // Contar palabras en común (incluyendo coincidencias parciales)
             var commonWords = words1.Count(w1 =>
                 words2.Any(w2 => w2.Contains(w1) || w1.Contains(w2)));
 

@@ -2,9 +2,6 @@
 
 namespace SegurosApp.API.Services
 {
-    /// <summary>
-    /// Factory para obtener el mapper correcto según la compañía
-    /// </summary>
     public class CompanyMapperFactory
     {
         private readonly IServiceProvider _serviceProvider;
@@ -16,9 +13,6 @@ namespace SegurosApp.API.Services
             _logger = logger;
         }
 
-        /// <summary>
-        /// Obtiene el mapper apropiado para la compañía especificada
-        /// </summary>
         public ICompanyFieldMapper GetMapper(int? companiaId)
         {
             _logger.LogInformation("🔍 Solicitando mapper para compañía: {CompaniaId}", companiaId);
@@ -47,16 +41,13 @@ namespace SegurosApp.API.Services
             }
         }
 
-        /// <summary>
-        /// Obtiene información sobre todos los mappers disponibles
-        /// </summary>
         public Dictionary<int, string> GetAvailableMappers()
         {
             return new Dictionary<int, string>
             {
                 { 1, "BSE" },
-                { 2, "SURA" }, // Futuro SuraFieldMapper
-                { 3, "MAPFRE" }, // Futuro MapfreFieldMapper
+                { 2, "SURA" }, 
+                { 3, "MAPFRE" }, 
                 { 4, "SURA" }
             };
         }

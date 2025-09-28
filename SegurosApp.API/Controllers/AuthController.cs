@@ -92,7 +92,6 @@ namespace SegurosApp.API.Controllers
         {
             try
             {
-                // Intentar múltiples formas de obtener el userId
                 var userIdClaim = User.FindFirst("id")?.Value ??
                                  User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
                                  User.FindFirst("sub")?.Value ??

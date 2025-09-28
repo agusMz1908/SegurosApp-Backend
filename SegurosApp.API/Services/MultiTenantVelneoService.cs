@@ -947,7 +947,6 @@ namespace SegurosApp.API.Services
                 request.contra = "3";
                 request.congeses = "5";
 
-                // ✅ CORREGIDO: Solo generar observaciones si vienen vacías
                 if (string.IsNullOrEmpty(request.observaciones))
                 {
                     _logger.LogInformation("Generando observaciones básicas para cambio (request sin observaciones)");
@@ -962,7 +961,6 @@ namespace SegurosApp.API.Services
                 {
                     _logger.LogInformation("Preservando observaciones pre-generadas del ModifyPolizaService");
 
-                    // Solo agregar observaciones adicionales del usuario si no están ya incluidas
                     if (!string.IsNullOrEmpty(observaciones) && !request.observaciones.Contains(observaciones))
                     {
                         request.observaciones += $"\n\nObservaciones adicionales del usuario:\n{observaciones}";
@@ -1204,19 +1202,16 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("Buscando póliza existente: Número={NumeroPoliza}, Compañía={CompaniaId}",
                     numeroPoliza, companiaId);
-
-                // Para MultiTenantVelneoService
                 using var client = await CreateTenantHttpClientAsync();
                 var (_, apiKey) = await GetTenantConfigAsync();
 
-                // Buscar en la lista de contratos existentes
                 var queryParams = new List<string>
-        {
-            $"api_key={apiKey}",
-            $"filter[poliza]={Uri.EscapeDataString(numeroPoliza.Trim())}",
-            $"filter[compania]={companiaId}",
-            "page[size]=10"
-        };
+                {
+                    $"api_key={apiKey}",
+                    $"filter[poliza]={Uri.EscapeDataString(numeroPoliza.Trim())}",
+                    $"filter[compania]={companiaId}",
+                    "page[size]=10"
+                };
 
                 var url = $"v1/contratos?{string.Join("&", queryParams)}";
                 var response = await client.GetAsync(url);
@@ -1236,7 +1231,6 @@ namespace SegurosApp.API.Services
                                 }
                             });
 
-                        // Buscar coincidencia exacta
                         var contrato = velneoResponse?.contratos?.FirstOrDefault(c =>
                             string.Equals(c.conpol?.Trim(), numeroPoliza.Trim(), StringComparison.OrdinalIgnoreCase) &&
                             c.comcod == companiaId);
@@ -1270,7 +1264,7 @@ namespace SegurosApp.API.Services
             catch (HttpRequestException ex)
             {
                 _logger.LogError(ex, "Error de conectividad buscando póliza {NumeroPoliza}", numeroPoliza);
-                throw; // Re-lanzar para manejo en el controller
+                throw; 
             }
             catch (Exception ex)
             {
@@ -1285,7 +1279,6 @@ namespace SegurosApp.API.Services
             {
                 _logger.LogInformation("Obteniendo información detallada de contrato/póliza {PolizaId}", polizaId);
 
-                // Usar el método existente GetPolizaDetalleAsync que ya tienes implementado
                 var contrato = await GetPolizaDetalleAsync(polizaId);
                 if (contrato == null)
                 {
@@ -1293,7 +1286,6 @@ namespace SegurosApp.API.Services
                     return null;
                 }
 
-                // Mapear ContratoItem a ExistingPolizaInfo
                 return new ExistingPolizaInfo
                 {
                     Id = contrato.id,
@@ -1301,7 +1293,7 @@ namespace SegurosApp.API.Services
                     FechaDesde = contrato.fecha_desde,
                     FechaHasta = contrato.fecha_hasta,
                     Estado = contrato.conestado ?? "",
-                    EstadoDescripcion = contrato.EstadoDisplay, // Usar la propiedad computada
+                    EstadoDescripcion = contrato.EstadoDisplay, 
                     ClienteNombre = contrato.cliente_nombre ?? "",
                     MontoTotal = contrato.conpremio,
                     FechaCreacion = contrato.ingresado,
@@ -1595,8 +1587,6 @@ namespace SegurosApp.API.Services
 
         public async Task<FieldMappingSuggestion> SuggestMappingAsync(string fieldName, string scannedValue)
         {
-            // TODO: Implementar lógica de sugerencia basada en datos del tenant
-            // Por ahora retorna sugerencia básica
             return new FieldMappingSuggestion
             {
                 FieldName = fieldName,

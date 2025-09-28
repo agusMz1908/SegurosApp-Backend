@@ -41,29 +41,15 @@ namespace SegurosApp.API.Services.Poliza
             _logger.LogInformation("Creando request Velneo para cambio de póliza - Scan: {ScanId}, Usuario: {UserId}, Póliza anterior: {PolizaAnteriorId}",
                 scanId, userId, modifyRequest.PolizaAnteriorId);
 
-            // Obtener el scan
             var scan = await GetScanForModify(scanId, userId);
             var extractedData = DeserializeExtractedData(scan.ExtractedData);
-
-            // Obtener contexto del scan
             var context = GetModifyContext(scan);
-
-            // Obtener información del contexto (cliente, compañía, sección)
             var contextInfo = await GetContextInformation(context);
-
-            // Procesar datos específicos de modificación
             var modifyData = ProcessModifySpecificData(modifyRequest, extractedData);
-
-            // Construir el request base
             var request = BuildBaseModifyRequest(context, contextInfo, modifyData);
 
-            // Aplicar master data del frontend (si viene)
             await ApplyModifyMasterDataOverrides(request, modifyRequest);
-
-            // Configurar para modificación/cambio
             ConfigureForModify(request, modifyRequest);
-
-            // Generar observaciones específicas para cambio
             var cambiosDetectados = DetectarCambios(modifyRequest, extractedData);
 
             _logger.LogInformation("=== PUNTO CRÍTICO === Generando observaciones. Observaciones actuales: '{ObservacionesActuales}'", request.observaciones ?? "NULL");
@@ -85,9 +71,6 @@ namespace SegurosApp.API.Services.Poliza
             return request;
         }
 
-        /// <summary>
-        /// Valida los datos necesarios para cambio/modificación
-        /// </summary>
         public async Task<ModifyValidationResult> ValidateModifyDataAsync(
             int scanId,
             int userId,
@@ -97,7 +80,6 @@ namespace SegurosApp.API.Services.Poliza
 
             try
             {
-                // Validar que existe el scan
                 var scan = await _context.DocumentScans
                     .FirstOrDefaultAsync(s => s.Id == scanId && s.UserId == userId);
 
@@ -107,7 +89,6 @@ namespace SegurosApp.API.Services.Poliza
                     return result;
                 }
 
-                // Validar póliza anterior
                 var polizaAnterior = await _masterDataService.GetPolizaDetalleAsync(modifyRequest.PolizaAnteriorId);
                 if (polizaAnterior == null)
                 {
@@ -115,27 +96,23 @@ namespace SegurosApp.API.Services.Poliza
                     return result;
                 }
 
-                // Validar contexto del scan
                 if (!scan.ClienteId.HasValue || !scan.CompaniaId.HasValue || !scan.SeccionId.HasValue)
                 {
                     result.AddError("El scan no tiene contexto de cliente, compañía o sección");
                     return result;
                 }
 
-                // Validar tipo de cambio
                 if (string.IsNullOrWhiteSpace(modifyRequest.TipoCambio))
                 {
                     result.AddError("Tipo de cambio es requerido");
                     return result;
                 }
 
-                // Validar que la póliza anterior esté vigente para cambios
                 if (!polizaAnterior.EsVigente)
                 {
                     result.AddWarning($"La póliza anterior no está vigente (Estado: {polizaAnterior.EstadoDisplay})");
                 }
 
-                // Validar datos financieros si vienen
                 if (modifyRequest.Premio.HasValue && modifyRequest.Premio.Value <= 0)
                 {
                     result.AddWarning("Premio especificado es menor o igual a cero");
@@ -223,16 +200,13 @@ namespace SegurosApp.API.Services.Poliza
         {
             var data = new ModifySpecificData();
 
-            // Fechas (prioritizar request, fallback a extraído)
             data.FechaDesde = modifyRequest.FechaDesde ?? _dataExtractor.ExtractStartDate(extractedData);
             data.FechaHasta = modifyRequest.FechaHasta ?? _dataExtractor.ExtractEndDate(extractedData);
 
-            // Montos (prioritizar request, fallback a extraído)
             data.Premio = modifyRequest.Premio ?? _dataExtractor.ExtractPremium(extractedData);
             data.MontoTotal = modifyRequest.MontoTotal ?? _dataExtractor.ExtractTotalAmount(extractedData);
             data.CantidadCuotas = modifyRequest.CantidadCuotas ?? _dataExtractor.ExtractInstallmentCount(extractedData);
 
-            // Datos del vehículo (prioritizar request, fallback a extraído)
             data.VehiculoMarca = modifyRequest.VehiculoMarca ?? _dataExtractor.ExtractVehicleBrand(extractedData);
             data.VehiculoModelo = modifyRequest.VehiculoModelo ?? _dataExtractor.ExtractVehicleModel(extractedData);
             data.VehiculoAno = modifyRequest.VehiculoAno ?? _dataExtractor.ExtractVehicleYear(extractedData);
@@ -240,7 +214,6 @@ namespace SegurosApp.API.Services.Poliza
             data.VehiculoChasis = modifyRequest.VehiculoChasis ?? _dataExtractor.ExtractChassisNumber(extractedData);
             data.VehiculoPatente = modifyRequest.VehiculoPatente ?? _dataExtractor.ExtractVehiclePlate(extractedData);
 
-            // Número de póliza
             data.NumeroPoliza = modifyRequest.NumeroPoliza ?? _dataExtractor.ExtractPolicyNumber(extractedData);
 
             return data;
@@ -256,53 +229,38 @@ namespace SegurosApp.API.Services.Poliza
 
             return new VelneoPolizaRequest
             {
-                // IDs principales
                 clinro = context.ClienteId,
                 comcod = context.CompaniaId,
                 seccod = context.SeccionId,
-
-                // Datos de póliza
                 conpol = data.NumeroPoliza,
                 conend = _dataExtractor.ExtractEndorsement(new Dictionary<string, object>()),
                 confchdes = formattedStartDate,
                 confchhas = formattedEndDate,
                 conpremio = (int)Math.Round(data.Premio),
                 contot = (int)Math.Round(data.MontoTotal),
-
-                // Datos del vehículo
                 conmaraut = data.VehiculoMarca,
                 conmodaut = data.VehiculoModelo,
                 conanioaut = data.VehiculoAno,
                 conmotor = data.VehiculoMotor,
                 conchasis = data.VehiculoChasis,
                 conmataut = data.VehiculoPatente,
-
-                // Datos del cliente
                 clinom = contextInfo.Cliente?.clinom ?? "",
                 condom = contextInfo.Cliente?.clidir ?? "",
-                clinro1 = 0, // Beneficiario
-
-                // Condiciones de pago
-                consta = "1", // Método de pago por defecto
+                clinro1 = 0,
+                consta = "1", 
                 concuo = data.CantidadCuotas,
-                moncod = 1, // Moneda por defecto (UYU)
+                moncod = 1, 
                 conviamon = 1,
-
-                // Estados por defecto
                 congesti = "1",
-                congeses = "5", // Estado específico para cambios
-                contra = "3",   // Código para cambio
+                congeses = "5",
+                contra = "3",   
                 convig = "1",
-
-                // Información adicional
                 com_alias = contextInfo.Compania?.comnom ?? "",
                 ramo = contextInfo.Seccion?.seccion ?? "",
-
-                // Metadatos
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = context.ScanId,
-                conpadre = 0 // Se establecerá en ConfigureForModify
+                conpadre = 0 
             };
         }
 
@@ -311,7 +269,6 @@ namespace SegurosApp.API.Services.Poliza
             _logger.LogInformation("Aplicando overrides de master data para cambio - Combustible: {Combustible}, Categoría: {Categoria}",
                 modifyRequest.CombustibleId, modifyRequest.CategoriaId);
 
-            // Master data con prioridad al request (ahora usando int? en lugar de string?)
             if (modifyRequest.DepartamentoId.HasValue && modifyRequest.DepartamentoId.Value > 0)
                 request.dptnom = modifyRequest.DepartamentoId.Value;
 
@@ -345,11 +302,10 @@ namespace SegurosApp.API.Services.Poliza
 
         private void ConfigureForModify(VelneoPolizaRequest request, ModifyPolizaRequest modifyRequest)
         {
-            // Configurar como cambio/modificación
             request.conpadre = modifyRequest.PolizaAnteriorId;
-            request.contra = "3"; // Código para cambio
-            request.congeses = "5"; // Estado específico para cambios
-            request.convig = "1"; // Vigente
+            request.contra = "3";
+            request.congeses = "5"; 
+            request.convig = "1"; 
 
             _logger.LogInformation("Request configurado para cambio - ConPadre: {ConPadre}, Tipo: Cambio (3), TipoCambio: {TipoCambio}",
                 modifyRequest.PolizaAnteriorId, modifyRequest.TipoCambio);
@@ -359,7 +315,6 @@ namespace SegurosApp.API.Services.Poliza
         {
             var cambios = new Dictionary<string, string>();
 
-            // Detectar cambios en datos del vehículo
             if (!string.IsNullOrEmpty(modifyRequest.VehiculoMarca))
             {
                 cambios.Add("Marca del vehículo", modifyRequest.VehiculoMarca);
@@ -375,7 +330,6 @@ namespace SegurosApp.API.Services.Poliza
                 cambios.Add("Año del vehículo", modifyRequest.VehiculoAno.Value.ToString());
             }
 
-            // Detectar cambios en montos
             if (modifyRequest.Premio.HasValue && modifyRequest.Premio > 0)
             {
                 cambios.Add("Premio", $"${modifyRequest.Premio.Value:N2}");
@@ -386,7 +340,6 @@ namespace SegurosApp.API.Services.Poliza
                 cambios.Add("Monto total", $"${modifyRequest.MontoTotal.Value:N2}");
             }
 
-            // Detectar cambios en cuotas
             if (modifyRequest.CantidadCuotas.HasValue && modifyRequest.CantidadCuotas > 0)
             {
                 cambios.Add("Cantidad de cuotas", modifyRequest.CantidadCuotas.Value.ToString());

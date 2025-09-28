@@ -17,8 +17,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             IVelneoMasterDataService masterDataService)
         {
             var normalized = await base.NormalizeFieldsAsync(extractedData, masterDataService);
-
-            // Aplicar normalizaciones específicas de MAPFRE
             MapMapfreSpecificFields(normalized);
 
             return normalized;
@@ -26,24 +24,19 @@ namespace SegurosApp.API.Services.CompanyMappers
 
         private void MapMapfreSpecificFields(Dictionary<string, object> data)
         {
-            // Limpiar campos de vehículo con prefijos
             CleanVehicleFields(data);
-
-            // Mapear costo como prima comercial
             if (data.ContainsKey("costo.costo") && !data.ContainsKey("poliza.prima_comercial"))
             {
                 data["poliza.prima_comercial"] = data["costo.costo"];
                 _logger.LogInformation("MAPFRE - Mapeado costo.costo -> poliza.prima_comercial");
             }
 
-            // Mapear premio total
             if (data.ContainsKey("costo.premio_total") && !data.ContainsKey("financiero.premio_total"))
             {
                 data["financiero.premio_total"] = data["costo.premio_total"];
                 _logger.LogInformation("MAPFRE - Mapeado costo.premio_total -> financiero.premio_total");
             }
 
-            // Contar cuotas MAPFRE
             int cuotasEncontradas = 0;
             for (int i = 1; i <= 12; i++)
             {
@@ -63,8 +56,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             if (data.ContainsKey("poliza.modalidad"))
             {
                 var modalidad = data["poliza.modalidad"].ToString();
-
-                // Normalizar modalidades conocidas de MAPFRE
                 var modalidadNormalizada = NormalizeModalidad(modalidad);
                 if (modalidadNormalizada != modalidad)
                 {
@@ -81,7 +72,6 @@ namespace SegurosApp.API.Services.CompanyMappers
 
             var upper = modalidad.ToUpper();
 
-            // Ser más específico con TODO RIESGO
             if (upper.Contains("TODO RIESGO") && upper.Contains("TOTAL"))
                 return "TODO RIESGO TOTAL";
 
@@ -133,8 +123,6 @@ namespace SegurosApp.API.Services.CompanyMappers
             if (string.IsNullOrWhiteSpace(value)) return value;
 
             var cleaned = value.Replace("\n", " ").Replace("\r", "").Trim();
-
-            // Prefijos específicos de MAPFRE
             var prefixesToRemove = new Dictionary<string, string[]>
             {
                 ["vehiculo.marca"] = new[] { "Marca\n", "Marca ", "MARCA\n", "MARCA " },

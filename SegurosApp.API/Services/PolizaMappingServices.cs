@@ -6,9 +6,6 @@ using SegurosApp.API.Services.Poliza.Shared;
 
 namespace SegurosApp.API.Services.Poliza
 {
-    /// <summary>
-    /// Servicio especializado para el mapeo de datos escaneados con contexto de pre-selección
-    /// </summary>
     public class PolizaMappingService
     {
         private readonly IVelneoMasterDataService _masterDataService;
@@ -25,9 +22,6 @@ namespace SegurosApp.API.Services.Poliza
             _logger = logger;
         }
 
-        /// <summary>
-        /// Mapea los datos escaneados con el contexto de pre-selección
-        /// </summary>
         public async Task<PolizaMappingWithContextResponse> MapToPolizaWithContextAsync(
             Dictionary<string, object> extractedData,
             PreSelectionContext context)
@@ -39,28 +33,17 @@ namespace SegurosApp.API.Services.Poliza
 
             try
             {
-                // Normalizar datos usando el extractor compartido
                 var normalizedData = await NormalizeExtractedDataAsync(extractedData, context.CompaniaId);
-
-                // Mapear datos básicos
                 var mappedData = await MapBasicPolizaDataAsync(normalizedData, context);
                 response.MappedData = mappedData;
                 response.NormalizedData = normalizedData;
-
-                // Generar sugerencias automáticas
                 var suggestions = await GenerateAutoSuggestionsAsync(normalizedData, mappedData);
                 response.AutoSuggestions = suggestions;
-
-                // Identificar campos que requieren atención
                 var requiresAttention = IdentifyFieldsRequiringAttention(mappedData, normalizedData);
                 response.RequiresAttention = requiresAttention;
-
-                // Calcular métricas de mapeo
                 var metrics = CalculateMappingMetrics(mappedData, normalizedData);
                 response.MappingMetrics = metrics;
                 response.CompletionPercentage = metrics.OverallCompletionPercentage;
-
-                // Determinar si está completo
                 response.IsComplete = DetermineIfComplete(mappedData, requiresAttention);
                 response.OverallCompletionPercentage = response.CompletionPercentage;
                 response.ConfirmedByPreSelection = new List<string> { "cliente", "compania", "seccion" };
@@ -131,7 +114,6 @@ namespace SegurosApp.API.Services.Poliza
 
             try
             {
-                // Sugerencia para combustible
                 if (!string.IsNullOrEmpty(mappedData.VehiculoCombustible))
                 {
                     var fuelSuggestion = await _masterDataService.SuggestMappingAsync("combustible", mappedData.VehiculoCombustible);
@@ -150,7 +132,6 @@ namespace SegurosApp.API.Services.Poliza
                     }
                 }
 
-                // Más sugerencias según sea necesario...
                 _logger.LogInformation("Generadas {Count} sugerencias automáticas", suggestions.Count);
             }
             catch (Exception ex)
@@ -180,7 +161,6 @@ namespace SegurosApp.API.Services.Poliza
                 });
             }
 
-            // Más validaciones...
             return issues;
         }
 
@@ -197,7 +177,6 @@ namespace SegurosApp.API.Services.Poliza
                 TotalFieldsScanned = extractedData.Count,
                 FieldsMappedSuccessfully = mappedFields,
                 OverallCompletionPercentage = completionPercentage,
-                // Más métricas según sea necesario...
             };
         }
 
@@ -223,7 +202,6 @@ namespace SegurosApp.API.Services.Poliza
             if (!string.IsNullOrEmpty(data.FechaHasta)) count++;
             if (data.Premio > 0) count++;
             if (data.MontoTotal > 0) count++;
-            // Contar más campos...
             return count;
         }
 
@@ -309,8 +287,6 @@ namespace SegurosApp.API.Services.Poliza
 
         private async Task<Dictionary<string, object>> NormalizeExtractedDataAsync(Dictionary<string, object> extractedData, int? companiaId = null)
         {
-            // Por ahora usar los datos tal como vienen
-            // En el futuro aquí se pueden aplicar normalizaciones específicas por compañía
             return extractedData;
         }
 

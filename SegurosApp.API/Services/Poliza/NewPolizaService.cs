@@ -32,9 +32,6 @@ namespace SegurosApp.API.Services.Poliza
             _logger = logger;
         }
 
-        /// <summary>
-        /// Crea un request de Velneo para nueva póliza desde scan
-        /// </summary>
         public async Task<VelneoPolizaRequest> CreateVelneoRequestFromScanAsync(
             int scanId,
             int userId,
@@ -53,12 +50,10 @@ namespace SegurosApp.API.Services.Poliza
             var extractedData = JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
 
-            // Obtener contexto
             var contextClienteId = GetValueWithOverride(overrides?.ClienteId, scan.ClienteId, "ClienteId");
             var contextCompaniaId = GetValueWithOverride(overrides?.CompaniaId, scan.CompaniaId, "CompaniaId");
             var contextSeccionId = GetValueWithOverride(overrides?.SeccionId, scan.SeccionId, "SeccionId");
 
-            // Obtener información de master data
             ClienteItem? clienteInfo = null;
             CompaniaItem? companiaInfo = null;
             SeccionItem? seccionInfo = null;
@@ -87,18 +82,14 @@ namespace SegurosApp.API.Services.Poliza
                 _logger.LogWarning("Error obteniendo información de master data: {Error}", ex.Message);
             }
 
-            // Extraer datos usando PolizaDataExtractor
             var extractedStartDate = _dataExtractor.ExtractStartDate(extractedData);
             var extractedEndDate = _dataExtractor.ExtractEndDate(extractedData);
             var extractedPremium = _dataExtractor.ExtractPremium(extractedData);
             var extractedTotal = _dataExtractor.ExtractTotalAmount(extractedData);
             var extractedCuotas = _dataExtractor.ExtractInstallmentCount(extractedData);
             var extractedPaymentMethod = _dataExtractor.ExtractPaymentMethod(extractedData);
-
-            // Construir request usando las propiedades override del DTO
             var request = new VelneoPolizaRequest
             {
-                // IDs principales
                 clinro = contextClienteId ?? throw new ArgumentException("Cliente ID requerido"),
                 comcod = contextCompaniaId ?? throw new ArgumentException("Compañía ID requerida"),
                 seccod = contextSeccionId ?? throw new ArgumentException("Sección ID requerida"),
@@ -110,7 +101,6 @@ namespace SegurosApp.API.Services.Poliza
                 conpremio = (int)Math.Round(GetDecimalValueWithOverride(overrides?.PremiumOverride, extractedPremium, "Premio")),
                 contot = (int)Math.Round(GetDecimalValueWithOverride(overrides?.TotalOverride, extractedTotal, "MontoTotal")),
 
-                // Datos del vehículo
                 conmaraut = GetStringValueWithOverride(overrides?.VehicleBrandOverride, _dataExtractor.ExtractVehicleBrand(extractedData), "MarcaVehiculo"),
                 conmodaut = GetStringValueWithOverride(overrides?.VehicleModelOverride, _dataExtractor.ExtractVehicleModel(extractedData), "ModeloVehiculo"),
                 conanioaut = GetIntValueWithOverride(overrides?.VehicleYearOverride, _dataExtractor.ExtractVehicleYear(extractedData), "AnoVehiculo"),
@@ -118,12 +108,10 @@ namespace SegurosApp.API.Services.Poliza
                 conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, _dataExtractor.ExtractChassisNumber(extractedData), "NumeroChasis"),
                 conmataut = _dataExtractor.ExtractVehiclePlate(extractedData),
 
-                // Datos del cliente
                 clinom = GetStringValueWithOverride(overrides?.ClientNameOverride, clienteInfo?.clinom, "NombreCliente"),
                 condom = GetStringValueWithOverride(overrides?.ClientAddressOverride, clienteInfo?.clidir, "DireccionCliente"),
-                clinro1 = 0, // Beneficiario
+                clinro1 = 0, 
 
-                // Master data (usando overrides con defaults)
                 dptnom = overrides?.DepartmentIdOverride ?? 1,
                 combustibles = overrides?.FuelCodeOverride ?? "1",
                 desdsc = overrides?.DestinationIdOverride ?? 1,
@@ -132,30 +120,25 @@ namespace SegurosApp.API.Services.Poliza
                 tarcod = overrides?.TariffIdOverride ?? 1,
                 corrnom = overrides?.BrokerIdOverride ?? 0,
 
-                // Condiciones de pago
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = GetIntValueWithOverride(overrides?.InstallmentCountOverride, extractedCuotas, "CantidadCuotas"),
-                moncod = overrides?.CurrencyIdOverride ?? 1, // Default UYU
+                moncod = overrides?.CurrencyIdOverride ?? 1, 
                 conviamon = overrides?.PaymentCurrencyIdOverride ?? 1,
 
-                // Estados para nueva póliza
                 congesti = "1",
                 congeses = "1",
-                contra = "1", // Nueva póliza
+                contra = "1",
                 convig = "1",
 
-                // Información adicional
                 com_alias = companiaInfo?.comnom ?? "",
                 ramo = seccionInfo?.seccion ?? "",
 
-                // Metadatos
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = scanId,
-                conpadre = 0 // Sin póliza padre para nuevas pólizas
+                conpadre = 0 
             };
 
-            // Generar observaciones usando ObservationsGenerator
             request.observaciones = _observationsGenerator.GenerateNewPolizaObservations(
                 overrides?.Notes,
                 overrides?.UserComments,
@@ -212,7 +195,7 @@ namespace SegurosApp.API.Services.Poliza
         private string MapPaymentMethodCode(string paymentMethod)
         {
             if (string.IsNullOrEmpty(paymentMethod))
-                return "1"; // Default contado
+                return "1"; 
 
             return paymentMethod.ToUpperInvariant() switch
             {
