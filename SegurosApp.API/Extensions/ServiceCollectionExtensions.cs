@@ -10,7 +10,6 @@ namespace SegurosApp.API.Extensions
             services.AddScoped<BSEFieldMapper>();
             services.AddScoped<MapfreFieldMapper>();
             services.AddScoped<SuraFieldMapper>();
-
             services.AddScoped<CompanyMapperFactory>();
 
             return services;

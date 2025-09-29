@@ -15,7 +15,7 @@ namespace SegurosApp.API.Services
 
         public ICompanyFieldMapper GetMapper(int? companiaId)
         {
-            _logger.LogInformation("🔍 Solicitando mapper para compañía: {CompaniaId}", companiaId);
+            _logger.LogInformation("Solicitando mapper para compañía: {CompaniaId}", companiaId);
 
             var mapperType = companiaId switch
             {
@@ -26,17 +26,17 @@ namespace SegurosApp.API.Services
                 _ => typeof(BSEFieldMapper)
             };
 
-            _logger.LogInformation("🎯 Tipo de mapper determinado: {MapperType}", mapperType.Name);
+            _logger.LogInformation("Tipo de mapper determinado: {MapperType}", mapperType.Name);
 
             try
             {
                 var mapper = (ICompanyFieldMapper)_serviceProvider.GetRequiredService(mapperType);
-                _logger.LogInformation("✅ Mapper resuelto correctamente: {ActualMapperName}", mapper.GetCompanyName());
+                _logger.LogInformation("Mapper resuelto correctamente: {ActualMapperName}", mapper.GetCompanyName());
                 return mapper;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error resolviendo mapper {MapperType}, usando BSE por defecto", mapperType.Name);
+                _logger.LogError(ex, "Error resolviendo mapper {MapperType}, usando BSE por defecto", mapperType.Name);
                 return _serviceProvider.GetRequiredService<BSEFieldMapper>();
             }
         }
@@ -46,8 +46,8 @@ namespace SegurosApp.API.Services
             return new Dictionary<int, string>
             {
                 { 1, "BSE" },
-                { 2, "SURA" }, 
-                { 3, "MAPFRE" }, 
+                { 2, "SURA" },
+                { 3, "MAPFRE" },
                 { 4, "SURA" }
             };
         }
