@@ -14,6 +14,7 @@ namespace SegurosApp.API.Services.Poliza
         private readonly IVelneoMasterDataService _masterDataService;
         private readonly PolizaDataExtractor _dataExtractor;
         private readonly ObservationsGenerator _observationsGenerator;
+        private readonly CompanyMapperFactory _companyMapperFactory;
         private readonly AppDbContext _context;
         private readonly ILogger<RenewPolizaService> _logger;
 
@@ -21,12 +22,14 @@ namespace SegurosApp.API.Services.Poliza
             IVelneoMasterDataService masterDataService,
             PolizaDataExtractor dataExtractor,
             ObservationsGenerator observationsGenerator,
+            CompanyMapperFactory companyMapperFactory,
             AppDbContext context,
             ILogger<RenewPolizaService> logger)
         {
             _masterDataService = masterDataService;
             _dataExtractor = dataExtractor;
             _observationsGenerator = observationsGenerator;
+            _companyMapperFactory = companyMapperFactory;
             _context = context;
             _logger = logger;
         }
@@ -166,7 +169,28 @@ namespace SegurosApp.API.Services.Poliza
             Dictionary<string, object> extractedData,
             int? companiaId)
         {
-            return extractedData;
+            if (!companiaId.HasValue)
+            {
+                _logger.LogWarning("No se especificó companiaId para renovación, usando datos sin normalizar");
+                return extractedData;
+            }
+
+            try
+            {
+                var mapper = _companyMapperFactory.GetMapper(companiaId);
+                var normalized = await mapper.NormalizeFieldsAsync(extractedData, _masterDataService);
+
+                _logger.LogInformation("✅ Datos normalizados exitosamente con mapper: {CompanyName} para renovación", mapper.GetCompanyName());
+                _logger.LogDebug("Campos normalizados disponibles para renovación: {Keys}",
+                    string.Join(", ", normalized.Keys.Where(k => k.Contains("cuota") || k.Contains("motor") || k.Contains("chasis")).Take(10)));
+
+                return normalized;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error normalizando datos con mapper para renovación, usando datos originales");
+                return extractedData;
+            }
         }
 
         private RenewalContext GetRenewalContext(DocumentScan scan)

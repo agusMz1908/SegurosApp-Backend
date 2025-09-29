@@ -16,6 +16,7 @@ namespace SegurosApp.API.Services.Poliza
         private readonly IVelneoMasterDataService _masterDataService;
         private readonly PolizaDataExtractor _dataExtractor;
         private readonly ObservationsGenerator _observationsGenerator;
+        private readonly CompanyMapperFactory _companyMapperFactory;
         private readonly AppDbContext _context;
         private readonly ILogger<ModifyPolizaService> _logger;
 
@@ -23,12 +24,14 @@ namespace SegurosApp.API.Services.Poliza
             IVelneoMasterDataService masterDataService,
             PolizaDataExtractor dataExtractor,
             ObservationsGenerator observationsGenerator,
+            CompanyMapperFactory companyMapperFactory, 
             AppDbContext context,
             ILogger<ModifyPolizaService> logger)
         {
             _masterDataService = masterDataService;
             _dataExtractor = dataExtractor;
             _observationsGenerator = observationsGenerator;
+            _companyMapperFactory = companyMapperFactory; 
             _context = context;
             _logger = logger;
         }
@@ -43,14 +46,16 @@ namespace SegurosApp.API.Services.Poliza
 
             var scan = await GetScanForModify(scanId, userId);
             var extractedData = DeserializeExtractedData(scan.ExtractedData);
+            var normalizedData = await NormalizeDataForModify(extractedData, scan.CompaniaId);
             var context = GetModifyContext(scan);
+
             var contextInfo = await GetContextInformation(context);
-            var modifyData = ProcessModifySpecificData(modifyRequest, extractedData);
+            var modifyData = ProcessModifySpecificData(modifyRequest, normalizedData);
             var request = BuildBaseModifyRequest(context, contextInfo, modifyData);
 
             await ApplyModifyMasterDataOverrides(request, modifyRequest);
             ConfigureForModify(request, modifyRequest);
-            var cambiosDetectados = DetectarCambios(modifyRequest, extractedData);
+            var cambiosDetectados = DetectarCambios(modifyRequest, normalizedData);
 
             _logger.LogInformation("=== PUNTO CRÍTICO === Generando observaciones. Observaciones actuales: '{ObservacionesActuales}'", request.observaciones ?? "NULL");
 
@@ -158,6 +163,34 @@ namespace SegurosApp.API.Services.Poliza
         {
             return JsonSerializer.Deserialize<Dictionary<string, object>>(extractedDataJson)
                 ?? new Dictionary<string, object>();
+        }
+
+        private async Task<Dictionary<string, object>> NormalizeDataForModify(
+    Dictionary<string, object> extractedData,
+    int? companiaId)
+        {
+            if (!companiaId.HasValue)
+            {
+                _logger.LogWarning("No se especificó companiaId para cambio, usando datos sin normalizar");
+                return extractedData;
+            }
+
+            try
+            {
+                var mapper = _companyMapperFactory.GetMapper(companiaId);
+                var normalized = await mapper.NormalizeFieldsAsync(extractedData, _masterDataService);
+
+                _logger.LogInformation("✅ Datos normalizados exitosamente con mapper: {CompanyName} para cambio", mapper.GetCompanyName());
+                _logger.LogDebug("Campos normalizados disponibles para cambio: {Keys}",
+                    string.Join(", ", normalized.Keys.Where(k => k.Contains("cuota") || k.Contains("motor") || k.Contains("chasis")).Take(10)));
+
+                return normalized;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error normalizando datos con mapper para cambio, usando datos originales");
+                return extractedData;
+            }
         }
 
         private ModifyContext GetModifyContext(DocumentScan scan)

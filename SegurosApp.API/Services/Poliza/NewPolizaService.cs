@@ -15,6 +15,7 @@ namespace SegurosApp.API.Services.Poliza
         private readonly IVelneoMasterDataService _masterDataService;
         private readonly PolizaDataExtractor _dataExtractor;
         private readonly ObservationsGenerator _observationsGenerator;
+        private readonly CompanyMapperFactory _companyMapperFactory;
         private readonly AppDbContext _context;
         private readonly ILogger<NewPolizaService> _logger;
 
@@ -22,20 +23,22 @@ namespace SegurosApp.API.Services.Poliza
             IVelneoMasterDataService masterDataService,
             PolizaDataExtractor dataExtractor,
             ObservationsGenerator observationsGenerator,
+            CompanyMapperFactory companyMapperFactory,
             AppDbContext context,
             ILogger<NewPolizaService> logger)
         {
             _masterDataService = masterDataService;
             _dataExtractor = dataExtractor;
             _observationsGenerator = observationsGenerator;
+            _companyMapperFactory = companyMapperFactory;
             _context = context;
             _logger = logger;
         }
 
         public async Task<VelneoPolizaRequest> CreateVelneoRequestFromScanAsync(
-            int scanId,
-            int userId,
-            CreatePolizaVelneoRequest? overrides = null)
+                    int scanId,
+                    int userId,
+                    CreatePolizaVelneoRequest? overrides = null)
         {
             _logger.LogInformation("Creando request Velneo para nueva póliza - Scan: {ScanId}, Usuario: {UserId}", scanId, userId);
 
@@ -49,6 +52,8 @@ namespace SegurosApp.API.Services.Poliza
 
             var extractedData = JsonSerializer.Deserialize<Dictionary<string, object>>(scan.ExtractedData)
                 ?? new Dictionary<string, object>();
+
+            var normalizedData = await NormalizeDataWithCompanyMapper(extractedData, scan.CompaniaId);
 
             var contextClienteId = GetValueWithOverride(overrides?.ClienteId, scan.ClienteId, "ClienteId");
             var contextCompaniaId = GetValueWithOverride(overrides?.CompaniaId, scan.CompaniaId, "CompaniaId");
@@ -82,35 +87,36 @@ namespace SegurosApp.API.Services.Poliza
                 _logger.LogWarning("Error obteniendo información de master data: {Error}", ex.Message);
             }
 
-            var extractedStartDate = _dataExtractor.ExtractStartDate(extractedData);
-            var extractedEndDate = _dataExtractor.ExtractEndDate(extractedData);
-            var extractedPremium = _dataExtractor.ExtractPremium(extractedData);
-            var extractedTotal = _dataExtractor.ExtractTotalAmount(extractedData);
-            var extractedCuotas = _dataExtractor.ExtractInstallmentCount(extractedData);
-            var extractedPaymentMethod = _dataExtractor.ExtractPaymentMethod(extractedData);
+            var extractedStartDate = _dataExtractor.ExtractStartDate(normalizedData);
+            var extractedEndDate = _dataExtractor.ExtractEndDate(normalizedData);
+            var extractedPremium = _dataExtractor.ExtractPremium(normalizedData);
+            var extractedTotal = _dataExtractor.ExtractTotalAmount(normalizedData);
+            var extractedCuotas = _dataExtractor.ExtractInstallmentCount(normalizedData);
+            var extractedPaymentMethod = _dataExtractor.ExtractPaymentMethod(normalizedData);
+
             var request = new VelneoPolizaRequest
             {
                 clinro = contextClienteId ?? throw new ArgumentException("Cliente ID requerido"),
                 comcod = contextCompaniaId ?? throw new ArgumentException("Compañía ID requerida"),
                 seccod = contextSeccionId ?? throw new ArgumentException("Sección ID requerida"),
 
-                conend = _dataExtractor.ExtractEndorsement(extractedData),
-                conpol = GetStringValueWithOverride(overrides?.PolicyNumber, _dataExtractor.ExtractPolicyNumber(extractedData), "NumeroPoliza"),
+                conend = _dataExtractor.ExtractEndorsement(normalizedData),
+                conpol = GetStringValueWithOverride(overrides?.PolicyNumber, _dataExtractor.ExtractPolicyNumber(normalizedData), "NumeroPoliza"),
                 confchdes = ConvertToVelneoDateFormat(GetStringValueWithOverride(overrides?.StartDateOverride, extractedStartDate, "FechaDesde")),
                 confchhas = ConvertToVelneoDateFormat(GetStringValueWithOverride(overrides?.EndDateOverride, extractedEndDate, "FechaHasta")),
                 conpremio = (int)Math.Round(GetDecimalValueWithOverride(overrides?.PremiumOverride, extractedPremium, "Premio")),
                 contot = (int)Math.Round(GetDecimalValueWithOverride(overrides?.TotalOverride, extractedTotal, "MontoTotal")),
 
-                conmaraut = GetStringValueWithOverride(overrides?.VehicleBrandOverride, _dataExtractor.ExtractVehicleBrand(extractedData), "MarcaVehiculo"),
-                conmodaut = GetStringValueWithOverride(overrides?.VehicleModelOverride, _dataExtractor.ExtractVehicleModel(extractedData), "ModeloVehiculo"),
-                conanioaut = GetIntValueWithOverride(overrides?.VehicleYearOverride, _dataExtractor.ExtractVehicleYear(extractedData), "AnoVehiculo"),
-                conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, _dataExtractor.ExtractMotorNumber(extractedData), "NumeroMotor"),
-                conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, _dataExtractor.ExtractChassisNumber(extractedData), "NumeroChasis"),
-                conmataut = _dataExtractor.ExtractVehiclePlate(extractedData),
+                conmaraut = GetStringValueWithOverride(overrides?.VehicleBrandOverride, _dataExtractor.ExtractVehicleBrand(normalizedData), "MarcaVehiculo"),
+                conmodaut = GetStringValueWithOverride(overrides?.VehicleModelOverride, _dataExtractor.ExtractVehicleModel(normalizedData), "ModeloVehiculo"),
+                conanioaut = GetIntValueWithOverride(overrides?.VehicleYearOverride, _dataExtractor.ExtractVehicleYear(normalizedData), "AnoVehiculo"),
+                conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, _dataExtractor.ExtractMotorNumber(normalizedData), "NumeroMotor"),
+                conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, _dataExtractor.ExtractChassisNumber(normalizedData), "NumeroChasis"),
+                conmataut = _dataExtractor.ExtractVehiclePlate(normalizedData),
 
                 clinom = GetStringValueWithOverride(overrides?.ClientNameOverride, clienteInfo?.clinom, "NombreCliente"),
                 condom = GetStringValueWithOverride(overrides?.ClientAddressOverride, clienteInfo?.clidir, "DireccionCliente"),
-                clinro1 = 0, 
+                clinro1 = 0,
 
                 dptnom = overrides?.DepartmentIdOverride ?? 1,
                 combustibles = overrides?.FuelCodeOverride ?? "1",
@@ -122,7 +128,7 @@ namespace SegurosApp.API.Services.Poliza
 
                 consta = MapPaymentMethodCode(extractedPaymentMethod),
                 concuo = GetIntValueWithOverride(overrides?.InstallmentCountOverride, extractedCuotas, "CantidadCuotas"),
-                moncod = overrides?.CurrencyIdOverride ?? 1, 
+                moncod = overrides?.CurrencyIdOverride ?? 1,
                 conviamon = overrides?.PaymentCurrencyIdOverride ?? 1,
 
                 congesti = "1",
@@ -136,7 +142,7 @@ namespace SegurosApp.API.Services.Poliza
                 ingresado = DateTime.UtcNow,
                 last_update = DateTime.UtcNow,
                 app_id = scanId,
-                conpadre = 0 
+                conpadre = 0
             };
 
             request.observaciones = _observationsGenerator.GenerateNewPolizaObservations(
@@ -144,10 +150,38 @@ namespace SegurosApp.API.Services.Poliza
                 overrides?.UserComments,
                 request.concuo,
                 request.contot,
-                extractedData);
+                normalizedData);
 
             _logger.LogInformation("Request Velneo para nueva póliza creado exitosamente");
             return request;
+        }
+
+        private async Task<Dictionary<string, object>> NormalizeDataWithCompanyMapper(
+            Dictionary<string, object> extractedData,
+            int? companiaId)
+        {
+            if (!companiaId.HasValue)
+            {
+                _logger.LogWarning("No se especificó companiaId, usando datos sin normalizar");
+                return extractedData;
+            }
+
+            try
+            {
+                var mapper = _companyMapperFactory.GetMapper(companiaId);
+                var normalized = await mapper.NormalizeFieldsAsync(extractedData, _masterDataService);
+
+                _logger.LogInformation("✅ Datos normalizados exitosamente con mapper: {CompanyName}", mapper.GetCompanyName());
+                _logger.LogDebug("Campos normalizados disponibles: {Keys}",
+                    string.Join(", ", normalized.Keys.Where(k => k.Contains("cuota") || k.Contains("motor") || k.Contains("chasis")).Take(10)));
+
+                return normalized;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error normalizando datos con mapper, usando datos originales");
+                return extractedData;
+            }
         }
 
         #region Métodos auxiliares
@@ -195,7 +229,7 @@ namespace SegurosApp.API.Services.Poliza
         private string MapPaymentMethodCode(string paymentMethod)
         {
             if (string.IsNullOrEmpty(paymentMethod))
-                return "1"; 
+                return "1";
 
             return paymentMethod.ToUpperInvariant() switch
             {

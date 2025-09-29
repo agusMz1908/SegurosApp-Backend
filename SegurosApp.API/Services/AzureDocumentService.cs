@@ -20,6 +20,8 @@ namespace SegurosApp.API.Services
         private readonly DocumentFieldParser _fieldParser;
         private readonly IAzureModelMappingService _modelMappingService;
         private readonly BillingService _billingService;
+        private readonly CompanyMapperFactory _companyMapperFactory;
+        private readonly IVelneoMasterDataService _masterDataService;
 
         public AzureDocumentService(
             AppDbContext context,
@@ -27,7 +29,9 @@ namespace SegurosApp.API.Services
             ILogger<AzureDocumentService> logger,
             DocumentFieldParser fieldParser,
             IAzureModelMappingService modelMappingService,
-            BillingService billingService)
+            BillingService billingService,
+            CompanyMapperFactory companyMapperFactory,
+            IVelneoMasterDataService masterDataService)
         {
             _context = context;
             _configuration = configuration;
@@ -35,6 +39,8 @@ namespace SegurosApp.API.Services
             _fieldParser = fieldParser;
             _modelMappingService = modelMappingService;
             _billingService = billingService;
+            _companyMapperFactory = companyMapperFactory;
+            _masterDataService = masterDataService;
 
             var endpoint = _configuration["AzureDocumentIntelligence:Endpoint"];
             var apiKey = _configuration["AzureDocumentIntelligence:ApiKey"];
@@ -147,6 +153,28 @@ namespace SegurosApp.API.Services
                 }
 
                 var azureResult = await ProcessWithAzureAsync(file, modelId);
+
+                // NORMALIZAR DATOS ANTES DE GUARDAR
+                Dictionary<string, object> finalData = azureResult.ExtractedFields;
+
+                if (companiaId.HasValue)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Normalizando datos con mapper para compañía: {CompaniaId}", companiaId);
+
+                        var mapper = _companyMapperFactory.GetMapper(companiaId);
+                        finalData = await mapper.NormalizeFieldsAsync(azureResult.ExtractedFields, _masterDataService);
+
+                        _logger.LogInformation("Datos normalizados correctamente con mapper: {CompanyName}", mapper.GetCompanyName());
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error normalizando datos, guardando datos originales");
+                        finalData = azureResult.ExtractedFields;
+                    }
+                }
+
                 stopwatch.Stop();
 
                 var documentScan = new DocumentScan
@@ -155,14 +183,14 @@ namespace SegurosApp.API.Services
                     FileName = file.FileName,
                     FileSize = file.Length,
                     FileMd5Hash = fileHash,
-                    AzureModelId = modelId, 
-                    CompaniaId = companiaId, 
+                    AzureModelId = modelId,
+                    CompaniaId = companiaId,
                     AzureOperationId = azureResult.AzureOperationId,
                     ProcessingTimeMs = (int)stopwatch.ElapsedMilliseconds,
                     SuccessRate = azureResult.SuccessRate,
                     FieldsExtracted = azureResult.FieldsExtracted,
                     TotalFieldsAttempted = azureResult.TotalFieldsAttempted,
-                    ExtractedData = JsonSerializer.Serialize(azureResult.ExtractedFields),
+                    ExtractedData = JsonSerializer.Serialize(finalData),
                     Status = "Completed",
                     CreatedAt = startTime,
                     CompletedAt = DateTime.UtcNow
@@ -184,7 +212,7 @@ namespace SegurosApp.API.Services
                     FieldsExtracted = azureResult.FieldsExtracted,
                     TotalFieldsAttempted = azureResult.TotalFieldsAttempted,
                     Status = "Completed",
-                    ExtractedData = azureResult.ExtractedFields,
+                    ExtractedData = finalData,
                     IsDuplicate = false,
                     CreatedAt = startTime,
                     CompletedAt = DateTime.UtcNow,
@@ -277,7 +305,7 @@ namespace SegurosApp.API.Services
                 pageSize = filters.Limit;
             }
 
-            int page = filters.Page; 
+            int page = filters.Page;
 
             var scans = await query
                 .OrderByDescending(d => d.CreatedAt)
@@ -357,7 +385,7 @@ namespace SegurosApp.API.Services
             if (file == null || file.Length == 0)
                 return (false, "Archivo requerido");
 
-            if (file.Length > 10 * 1024 * 1024) 
+            if (file.Length > 10 * 1024 * 1024)
                 return (false, "El archivo es demasiado grande (máximo 10MB)");
 
             if (!file.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
@@ -530,14 +558,14 @@ namespace SegurosApp.API.Services
 
             try
             {
-                foreach (var table in tables.Take(3)) 
+                foreach (var table in tables.Take(3))
                 {
                     _logger.LogInformation("Procesando tabla con {Rows} filas y {Cols} columnas",
                         table.RowCount, table.ColumnCount);
 
-                    for (int row = 0; row < table.RowCount && row < 10; row++) 
+                    for (int row = 0; row < table.RowCount && row < 10; row++)
                     {
-                        for (int col = 0; col < table.ColumnCount && col < 5; col++) 
+                        for (int col = 0; col < table.ColumnCount && col < 5; col++)
                         {
                             var cell = table.Cells.FirstOrDefault(c => c.RowIndex == row && c.ColumnIndex == col);
                             if (cell != null && !string.IsNullOrEmpty(cell.Content?.Trim()))
@@ -590,6 +618,7 @@ namespace SegurosApp.API.Services
                 return field?.Content ?? string.Empty;
             }
         }
+
         private async Task UpdateDailyMetricsAsync(int userId, DateTime date, bool success, int processingTime, decimal successRate)
         {
             var metrics = await _context.DailyMetrics
@@ -704,9 +733,9 @@ namespace SegurosApp.API.Services
 
                 var pendingScans = await _context.DocumentScans
                     .Where(d => d.UserId == userId &&
-                               d.Status == "Completed" &&  
-                               !d.VelneoCreated &&         
-                               d.SuccessRate >= 70)       
+                               d.Status == "Completed" &&
+                               !d.VelneoCreated &&
+                               d.SuccessRate >= 70)
                     .OrderByDescending(d => d.CreatedAt)
                     .Take(limit)
                     .ToListAsync();
@@ -746,7 +775,7 @@ namespace SegurosApp.API.Services
                     SuccessfulScans = scans.Count(s => s.Status == "Completed"),
                     PendingVelneoCreation = scans.Count(s => !s.VelneoCreated && s.IsBillable),
                     VelneoCreatedSuccessfully = scans.Count(s => s.VelneoCreated),
-                    VelneoCreationFailed = scans.Count(s => !s.VelneoCreated && s.IsBillable && s.CreatedAt < DateTime.UtcNow.AddHours(-1)), 
+                    VelneoCreationFailed = scans.Count(s => !s.VelneoCreated && s.IsBillable && s.CreatedAt < DateTime.UtcNow.AddHours(-1)),
 
                     PeriodStart = fromDate.Value,
                     PeriodEnd = toDate.Value,
@@ -784,6 +813,7 @@ namespace SegurosApp.API.Services
                 };
             }
         }
+
         private async Task<List<DailyVelneoMetric>> CalculateDailyVelneoMetricsAsync(int userId, DateTime fromDate, DateTime toDate)
         {
             try
@@ -836,9 +866,9 @@ namespace SegurosApp.API.Services
                                d.Status == "Completed" &&
                                !d.VelneoCreated &&
                                d.IsBillable &&
-                               d.CreatedAt < DateTime.UtcNow.AddHours(-1)) 
+                               d.CreatedAt < DateTime.UtcNow.AddHours(-1))
                     .OrderByDescending(d => d.CreatedAt)
-                    .Take(20) 
+                    .Take(20)
                     .ToListAsync();
 
                 return problematicScans.Select(scan => new ProblematicVelneoDocumentDto
@@ -848,10 +878,10 @@ namespace SegurosApp.API.Services
                     CreatedAt = scan.CreatedAt,
                     ErrorType = "VelneoCreationPending",
                     ErrorMessage = "Documento no enviado a Velneo después de procesamiento exitoso",
-                    RetryCount = 0, 
+                    RetryCount = 0,
                     Status = "PendingVelneo",
 
-                    HasClienteId = false, 
+                    HasClienteId = false,
                     HasCompaniaId = false,
                     HasSeccionId = false,
                     HasPolicyNumber = !string.IsNullOrEmpty(GetPolicyNumberFromExtractedData(scan.ExtractedData)),
@@ -929,9 +959,8 @@ namespace SegurosApp.API.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error obteniendo modelos disponibles");
-                return new List<string> { "poliza_vehiculos_bse" }; 
+                return new List<string> { "poliza_vehiculos_bse" };
             }
         }
-
     }
 }
