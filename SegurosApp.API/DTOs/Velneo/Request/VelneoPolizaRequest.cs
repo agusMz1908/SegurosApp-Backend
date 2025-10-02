@@ -23,6 +23,7 @@
         public string conmotor { get; set; } = "";    // Motor (se limpiará automáticamente)
         public string conchasis { get; set; } = "";   // Chasis (se limpiará automáticamente)
         public string conmataut { get; set; } = "";   // Matrícula
+        public string conpadaut { get; set; } = "";
 
         // ✅ DATOS DEL CLIENTE - NUEVOS CAMPOS
         public string? clinom { get; set; }           // Nombre del cliente

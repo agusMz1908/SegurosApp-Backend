@@ -113,6 +113,7 @@ namespace SegurosApp.API.Services.Poliza
                 conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, _dataExtractor.ExtractMotorNumber(normalizedData), "NumeroMotor"),
                 conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, _dataExtractor.ExtractChassisNumber(normalizedData), "NumeroChasis"),
                 conmataut = _dataExtractor.ExtractVehiclePlate(normalizedData),
+                conpadaut = GetStringValueWithOverride(overrides?.VehiclePadronOverride, _dataExtractor.ExtractVehiclePadron(normalizedData), "PadronVehiculo"),
 
                 clinom = GetStringValueWithOverride(overrides?.ClientNameOverride, clienteInfo?.clinom, "NombreCliente"),
                 condom = GetStringValueWithOverride(overrides?.ClientAddressOverride, clienteInfo?.clidir, "DireccionCliente"),

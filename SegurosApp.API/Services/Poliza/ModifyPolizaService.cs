@@ -246,6 +246,7 @@ namespace SegurosApp.API.Services.Poliza
             data.VehiculoMotor = modifyRequest.VehiculoMotor ?? _dataExtractor.ExtractMotorNumber(extractedData);
             data.VehiculoChasis = modifyRequest.VehiculoChasis ?? _dataExtractor.ExtractChassisNumber(extractedData);
             data.VehiculoPatente = modifyRequest.VehiculoPatente ?? _dataExtractor.ExtractVehiclePlate(extractedData);
+            data.VehiculoPadron = modifyRequest.VehiculoPadron ?? _dataExtractor.ExtractVehiclePadron(extractedData);
 
             data.NumeroPoliza = modifyRequest.NumeroPoliza ?? _dataExtractor.ExtractPolicyNumber(extractedData);
 
@@ -277,6 +278,7 @@ namespace SegurosApp.API.Services.Poliza
                 conmotor = data.VehiculoMotor,
                 conchasis = data.VehiculoChasis,
                 conmataut = data.VehiculoPatente,
+                conpadaut = data.VehiculoPadron,
                 clinom = contextInfo.Cliente?.clinom ?? "",
                 condom = contextInfo.Cliente?.clidir ?? "",
                 clinro1 = 0,
@@ -485,6 +487,7 @@ namespace SegurosApp.API.Services.Poliza
         public string VehiculoMotor { get; set; } = "";
         public string VehiculoChasis { get; set; } = "";
         public string VehiculoPatente { get; set; } = "";
+        public string VehiculoPadron { get; set; } = "";
     }
 
     public class ModifyValidationResult

@@ -253,6 +253,7 @@ namespace SegurosApp.API.Services.Poliza
             data.VehiculoChasis = renewRequest.VehiculoChasis ?? _dataExtractor.ExtractChassisNumber(normalizedData);
             data.VehiculoPatente = renewRequest.VehiculoPatente ?? _dataExtractor.ExtractVehiclePlate(normalizedData);
             data.NumeroPoliza = renewRequest.NumeroPoliza ?? _dataExtractor.ExtractPolicyNumber(normalizedData);
+            data.VehiculoPadron = renewRequest.VehiculoPadron ?? _dataExtractor.ExtractVehiclePadron(normalizedData);
 
             return data;
         }
@@ -282,6 +283,7 @@ namespace SegurosApp.API.Services.Poliza
                 conmotor = data.VehiculoMotor,
                 conchasis = data.VehiculoChasis,
                 conmataut = data.VehiculoPatente,
+                conpadaut = data.VehiculoPadron,
                 clinom = contextInfo.Cliente?.clinom ?? "",
                 condom = contextInfo.Cliente?.clidir ?? "",
                 clinro1 = 0, 
@@ -551,6 +553,7 @@ namespace SegurosApp.API.Services.Poliza
         public string VehiculoMotor { get; set; } = "";
         public string VehiculoChasis { get; set; } = "";
         public string VehiculoPatente { get; set; } = "";
+        public string VehiculoPadron { get; set; } = "";
     }
 
     public class PolizaAnteriorInfo

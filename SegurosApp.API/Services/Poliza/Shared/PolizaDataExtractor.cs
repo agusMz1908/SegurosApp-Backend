@@ -162,6 +162,28 @@ namespace SegurosApp.API.Services.Poliza.Shared
             return chassisFull.Replace("CHASIS", "").Replace("chasis", "").Trim();
         }
 
+        public string ExtractVehiclePadron(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "vehiculo.padron", "padron", "PADRON", "PADRÓN",
+                "numero_padron", "vehiclePadron", "vehiculopadron"
+            };
+
+            var value = GetFirstValidValue(data, possibleFields);
+            if (!string.IsNullOrEmpty(value))
+            {
+                value = value.Replace("PADRÓN.", "")
+                            .Replace("PADRON.", "")
+                            .Replace("PADRÓN", "")
+                            .Replace("PADRON", "")
+                            .Trim();
+
+                _logger.LogInformation("✅ Padrón extraído: {Padron}", value);
+            }
+
+            return value ?? "";
+        }
+
         #endregion
 
         #region Datos Financieros

@@ -22,6 +22,7 @@
         public string VehicleBrand { get; set; } = "";
         public string VehicleModel { get; set; } = "";
         public int VehicleYear { get; set; } = 0;
+        public string VehiclePadron { get; set; } = "";
         public string MotorNumber { get; set; } = "";
         public string ChassisNumber { get; set; } = "";
         public string Notes { get; set; } = "";

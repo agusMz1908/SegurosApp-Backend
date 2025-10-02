@@ -86,7 +86,7 @@ namespace SegurosApp.API.Services.Poliza.Shared
             if (!string.IsNullOrEmpty(notasUsuario))
             {
                 observations.Add("");
-                observations.Add("OBSERVACIONES ADICIONALES:");
+                observations.Add("NOTAS ADICIONALES:");
                 observations.Add(notasUsuario);
             }
 
@@ -125,7 +125,6 @@ namespace SegurosApp.API.Services.Poliza.Shared
             var observations = new List<string>();
 
             observations.Add($"Cambio de Poliza {polizaAnteriorNumero} (ID: {polizaAnteriorId})");
-            observations.Add($"Tipo de cambio: {tipoCambio}");
 
             if (cambiosDetectados != null && cambiosDetectados.Count > 0)
             {
@@ -167,7 +166,7 @@ namespace SegurosApp.API.Services.Poliza.Shared
             if (!string.IsNullOrEmpty(notasUsuario))
             {
                 observations.Add(""); 
-                observations.Add("OBSERVACIONES ADICIONALES:");
+                observations.Add("NOTAS ADICIONALES:");
                 observations.Add(notasUsuario);
             }
 

@@ -28,6 +28,7 @@
         public string? VehiculoPatente { get; set; }
         public string? VehiculoChasis { get; set; }
         public string? VehiculoMotor { get; set; }
+        public string? VehiculoPadron { get; set; }
         public List<string> CamposCorregidos { get; set; } = new();
         public string? ComentariosUsuario { get; set; }
         public bool ForzarRenovacion { get; set; } = false;

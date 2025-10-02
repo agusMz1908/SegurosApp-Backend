@@ -167,6 +167,7 @@ namespace SegurosApp.API.Services
                 conmotor = GetStringValueWithOverride(overrides?.MotorNumberOverride, ExtractMotorNumber(normalizedData), "NumeroMotor"),
                 conchasis = GetStringValueWithOverride(overrides?.ChassisNumberOverride, ExtractChassisNumber(normalizedData), "NumeroChasis"),
                 conmataut = ExtractVehiclePlate(normalizedData),
+                conpadaut = ExtractVehiclePadron(normalizedData),
                 clinom = clienteInfo?.clinom ?? "",
                 condom = clienteInfo?.clidir ?? ExtractClientAddress(normalizedData),
                 clinro1 = ExtractBeneficiaryId(normalizedData),
@@ -269,6 +270,7 @@ namespace SegurosApp.API.Services
                 conmotor = renewRequest.VehiculoMotor ?? ExtractMotorNumber(normalizedData),
                 conchasis = renewRequest.VehiculoChasis ?? ExtractChassisNumber(normalizedData),
                 conmataut = renewRequest.VehiculoPatente ?? ExtractVehiclePlate(normalizedData),
+                conpadaut = renewRequest.VehiculoPadron ?? ExtractVehiclePadron(normalizedData),
                 clinom = clienteInfo?.clinom ?? "",
                 condom = clienteInfo?.clidir ?? ExtractClientAddress(normalizedData),
                 clinro1 = ExtractBeneficiaryId(normalizedData),
@@ -1859,6 +1861,28 @@ namespace SegurosApp.API.Services
             var chassisFull = GetFirstValidValue(data, possibleFields);
 
             return chassisFull.Replace("CHASIS", "").Replace("chasis", "").Trim();
+        }
+
+        private string ExtractVehiclePadron(Dictionary<string, object> data)
+        {
+            var possibleFields = new[] {
+                "vehiculo.padron", "padron", "PADRON", "PADRÓN",
+                "numero_padron", "vehiclePadron", "vehiculopadron"
+            };
+
+            var value = GetFirstValidValue(data, possibleFields);
+            if (!string.IsNullOrEmpty(value))
+            {
+                value = value.Replace("PADRÓN.", "")
+                            .Replace("PADRON.", "")
+                            .Replace("PADRÓN", "")
+                            .Replace("PADRON", "")
+                            .Trim();
+
+                _logger.LogInformation("✅ Padrón extraído: {Padron}", value);
+            }
+
+            return value ?? "";
         }
 
         private string ExtractFuelType(Dictionary<string, object> data)
