@@ -41,7 +41,13 @@ namespace SegurosApp.API.Services
                 if (existingBilling != null) return existingBilling;
 
                 var monthlyBill = await GetOrCreateMonthlyBillAsync(scan.CreatedAt.Year, scan.CreatedAt.Month, userId);
-                var tier = await _pricingService.GetApplicableTierAsync(1); 
+
+                // OBTENER CONTEO ACTUAL DE ITEMS
+                var currentItemCount = await _context.BillingItems
+                    .CountAsync(bi => bi.MonthlyBillingId == monthlyBill.Id);
+
+                // CALCULAR TIER BASADO EN EL NUEVO TOTAL
+                var tier = await _pricingService.GetApplicableTierAsync(currentItemCount + 1);
 
                 var billingItem = new BillingItems
                 {
@@ -59,9 +65,11 @@ namespace SegurosApp.API.Services
                 scan.IsBilled = true;
                 scan.BilledAt = DateTime.UtcNow;
 
-                await UpdateMonthlyBillTotalsAsync(monthlyBill);
+                // GUARDAR PRIMERO EL ITEM
                 await _context.SaveChangesAsync();
-                _ = Task.Run(async () => await CheckAndClosePreviousMonthAsync());
+
+                // LUEGO ACTUALIZAR TOTALES
+                await UpdateMonthlyBillTotalsAsync(monthlyBill);
 
                 return billingItem;
             }
@@ -283,32 +291,26 @@ namespace SegurosApp.API.Services
                                 ds.VelneoCreated &&
                                 !string.IsNullOrEmpty(ds.VelneoPolizaNumber) &&
                                 ds.IsBillable &&
-                                !ds.IsBilled)
+                                ds.IsBilled)  
                     .CountAsync();
 
-                var tier = polizasCount > 0
-                    ? await _pricingService.GetApplicableTierAsync(polizasCount)
-                    : null;
+                var currentMonthBill = await _context.MonthlyBilling
+                    .Include(mb => mb.BillingItems)
+                    .FirstOrDefaultAsync(mb => mb.BillingYear == now.Year &&
+                                             mb.BillingMonth == now.Month);
 
-                var estimatedCost = tier != null ? tier.PricePerPoliza * polizasCount : 0;
-
-                var lastBilling = await _context.MonthlyBilling
-                    .OrderByDescending(mb => mb.BillingYear)
-                    .ThenByDescending(mb => mb.BillingMonth)
-                    .FirstOrDefaultAsync();
+                var actualCost = currentMonthBill?.TotalAmount ?? 0;
+                var tier = polizasCount > 0 ? await _pricingService.GetApplicableTierAsync(polizasCount) : null;
 
                 var result = new BillingStatsDto
                 {
                     TotalPolizasThisMonth = polizasCount,
-                    EstimatedCost = estimatedCost,
+                    EstimatedCost = actualCost, 
                     ApplicableTierName = tier?.TierName ?? "Sin tier aplicable",
                     PricePerPoliza = tier?.PricePerPoliza ?? 0,
                     DaysLeftInMonth = (endOfMonth - now).Days + 1,
-                    LastBillingDate = lastBilling?.GeneratedAt ?? DateTime.MinValue
+                    LastBillingDate = currentMonthBill?.GeneratedAt ?? DateTime.MinValue
                 };
-
-                _logger.LogInformation("Stats mes actual: {PolizasCount} pólizas, tier '{TierName}', costo estimado ${EstimatedCost}",
-                    polizasCount, result.ApplicableTierName, estimatedCost);
 
                 return result;
             }
@@ -481,6 +483,20 @@ namespace SegurosApp.API.Services
                 if (bill == null)
                 {
                     return false;
+                }
+
+                var billPeriodEnd = new DateTime(bill.BillingYear, bill.BillingMonth, 1)
+                    .AddMonths(1)
+                    .AddDays(-1); 
+
+                var nextMonthStart = billPeriodEnd.AddDays(1); 
+
+                if (DateTime.UtcNow < nextMonthStart)
+                {
+                    throw new InvalidOperationException(
+                        $"No se puede marcar como pagada una factura del período actual. " +
+                        $"La factura de {bill.BillingMonth:D2}/{bill.BillingYear} estará disponible para pago a partir del {nextMonthStart:dd/MM/yyyy}."
+                    );
                 }
 
                 bill.Status = "Paid";

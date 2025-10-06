@@ -1912,8 +1912,9 @@ namespace SegurosApp.API.Services
         private string ExtractPaymentMethod(Dictionary<string, object> data)
         {
             var possibleFields = new[] {
-                "pago.medio",          
+                "pago.medio",
                 "pago.forma",
+                "formaPago",           
                 "forma_pago",
                 "payment_method",
                 "metodo_pago"
